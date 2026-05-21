@@ -1,0 +1,35 @@
+@"
+# .NET
+backend/src/**/bin/
+backend/src/**/obj/
+backend/tests/**/bin/
+backend/tests/**/obj/
+*.user
+*.suo
+.vs/
+
+# Environment
+backend/src/SkillDuel.Api/appsettings.Development.json
+web/.env.local
+web/.env.production
+
+# Node
+web/node_modules/
+web/.next/
+web/out/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Antigravity/Agent (opsiyonel, bunları commit etmek isteyebilirsin)
+.agent/
+.antigravity/
+
+# Scratch files
+backend/scratch/
+"@ | Out-File -FilePath .gitignore -Encoding utf8

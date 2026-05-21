@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ════════════════════════════════════════════════════════════
+   SKILLDUEL — THEME 3  (dark · amber / red)
+   All pages inherit these tokens via Tailwind CSS variables.
+   ════════════════════════════════════════════════════════════ */
+@layer base {
+  :root {
+    /* Page & surface colours */
+    --background: 216 28% 7%;          /* #0d1117 */
+    --card:        216 20% 11%;        /* #161b22 */
+    --popover:     216 20% 11%;
+    --input:       215 18% 14%;        /* #1c2128 */
+
+    /* Foreground */
+    --foreground:       210 40% 96%;   /* #f0f6fc */
+    --card-foreground:  210 40% 96%;
+    --popover-foreground: 210 40% 96%;
+
+    /* Border */
+    --border: 216 13% 22%;             /* #30363d */
+    --ring:   38 92% 50%;              /* amber #f59e0b */
+
+    /* Primary — amber */
+    --primary:            38 92% 50%;  /* #f59e0b */
+    --primary-foreground: 0 0% 4%;     /* near-black text on amber */
+
+    /* Secondary — dark surface */
+    --secondary:            215 18% 14%;
+    --secondary-foreground: 210 40% 96%;
+
+    /* Muted */
+    --muted:            215 14% 20%;
+    --muted-foreground: 218 11% 59%;   /* #8b949e */
+
+    /* Accent */
+    --accent:            215 18% 14%;
+    --accent-foreground: 210 40% 96%;
+
+    /* Destructive — red */
+    --destructive:            0 91% 63%;   /* #ef4444 */
+    --destructive-foreground: 210 40% 96%;
+
+    /* Radius */
+    --radius: 0.75rem;                 /* 12 px cards */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html, body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  }
+}
+
+/* ── Gradient accent utility ─────────────────────────────────── */
+@layer utilities {
+  .bg-gradient-accent {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+  }
+  .text-gradient-accent {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  /* Hover version for buttons */
+  .hover\:bg-gradient-accent:hover {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+  }
+
+  /* Success / danger semantic colours */
+  .text-success   { color: #3fb950; }
+  .bg-success\/10 { background-color: rgb(63 185 80 / 0.10); }
+  .border-success { border-color: #3fb950; }
+
+  .text-danger   { color: #f85149; }
+  .bg-danger\/10 { background-color: rgb(248 81 73 / 0.10); }
+  .border-danger { border-color: #f85149; }
+}
+
+/* ── Scrollbar styling ────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #30363d; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #f59e0b88; }
