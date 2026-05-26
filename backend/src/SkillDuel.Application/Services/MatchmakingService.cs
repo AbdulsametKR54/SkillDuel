@@ -11,69 +11,71 @@ public class MatchmakingService : IMatchmakingService
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly IDatabase _db;
+    private readonly IUserRepository _userRepository;
 
-    public MatchmakingService(IConnectionMultiplexer redis)
+    public MatchmakingService(IConnectionMultiplexer redis, IUserRepository userRepository)
     {
         _redis = redis;
         _db = _redis.GetDatabase();
+        _userRepository = userRepository;
     }
 
     public async Task JoinQueueAsync(Guid userId, GameMode mode, Guid? categoryId, DifficultyLevel? difficulty, QuestionType? questionType)
     {
-        // Önce varsa eski kaydını temizle
+        // First clean up any old record
         await LeaveQueueAsync(userId);
         
-        string userIdStr = userId.ToString();
         int rounds = (int)mode;
+        var user = await _userRepository.GetByIdAsync(userId);
+        int elo = user?.EloRating ?? 1200;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        // Meta veriyi kaydet (Kategori vb.)
-        var metaKey = RedisKeys.MatchmakingUserMetadata(userIdStr);
-        await _db.HashSetAsync(metaKey, new HashEntry[] 
-        { 
-            new("mode", rounds),
-            new("categoryId", categoryId?.ToString() ?? ""),
-            new("difficulty", difficulty.HasValue ? ((int)difficulty.Value).ToString() : ""),
-            new("questionType", questionType.HasValue ? ((int)questionType.Value).ToString() : ""),
-            new("joinedAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString())
-        });
-        await _db.KeyExpireAsync(metaKey, TimeSpan.FromMinutes(30));
+        // Serialize metadata inside a unified token to avoid any HGETALL lookups completely
+        string memberStr = MatchmakingSerializer.Serialize(
+            userId,
+            categoryId ?? Guid.Empty,
+            difficulty.HasValue ? (int)difficulty.Value : -1,
+            questionType.HasValue ? (int)questionType.Value : -1,
+            elo,
+            now
+        );
 
-        // Moda özel kuyruğa ekle
-        await _db.ListRightPushAsync(RedisKeys.MatchmakingQueue(rounds), userIdStr);
+        // Store player directly in ELO Score Sorted Set (ZSET)
+        await _db.SortedSetAddAsync(RedisKeys.MatchmakingQueue(rounds), memberStr, elo);
+
+        // Trigger matchmaking engine background BLPOP queue (wake worker instantly)
+        await _db.ListLeftPushAsync(RedisKeysExtensions.MatchmakingTriggerQueue, "trigger");
     }
 
     public async Task LeaveQueueAsync(Guid userId)
     {
         string userIdStr = userId.ToString();
-        
-        // Önce meta veriyi bulup hangi kuyrukta olduğunu anlamaya çalışabiliriz 
-        // veya her iki kuyruktan da silebiliriz (daha güvenli/basit)
-        await _db.ListRemoveAsync(RedisKeys.MatchmakingQueue((int)GameMode.Short), userIdStr);
-        await _db.ListRemoveAsync(RedisKeys.MatchmakingQueue((int)GameMode.Long), userIdStr);
-        
-        await _db.KeyDeleteAsync(RedisKeys.MatchmakingUserMetadata(userIdStr));
+
+        // Remove from both ELO Sorted Set (ZSET) queues
+        var shortQueue = RedisKeys.MatchmakingQueue((int)GameMode.Short);
+        var longQueue = RedisKeys.MatchmakingQueue((int)GameMode.Long);
+
+        // Scan members to match by prefix since userId is the prefix of our serialized queue payload
+        await RemovePlayerFromZSetAsync(shortQueue, userIdStr);
+        await RemovePlayerFromZSetAsync(longQueue, userIdStr);
     }
 
     public async Task<(Guid Player1, Guid Player2)?> TryMatchAsync(GameMode mode)
     {
-        int rounds = (int)mode;
-        string queueKey = RedisKeys.MatchmakingQueue(rounds);
+        // Keeping this method signature to satisfy interface contract while refactoring
+        return null;
+    }
 
-        long queueLength = await _db.ListLengthAsync(queueKey);
-        
-        if (queueLength < 2)
+    private async Task RemovePlayerFromZSetAsync(string queueKey, string userIdStr)
+    {
+        var members = await _db.SortedSetRangeByRankAsync(queueKey, 0, -1);
+        foreach (var member in members)
         {
-            return null;
+            string val = member.ToString();
+            if (val.StartsWith(userIdStr + ":"))
+            {
+                await _db.SortedSetRemoveAsync(queueKey, val);
+            }
         }
-
-        var p1Str = await _db.ListLeftPopAsync(queueKey);
-        var p2Str = await _db.ListLeftPopAsync(queueKey);
-
-        if (p1Str.IsNull || p2Str.IsNull)
-        {
-            return null;
-        }
-
-        return (Guid.Parse(p1Str!), Guid.Parse(p2Str!));
     }
 }

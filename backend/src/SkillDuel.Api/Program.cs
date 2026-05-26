@@ -82,12 +82,13 @@ builder.Services.AddScoped<IFriendshipRepository, FriendshipRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtProvider, JwtProvider>();
 builder.Services.AddScoped<IMatchmakingService, MatchmakingService>();
+builder.Services.AddScoped<MatchmakingProcessor>();
+builder.Services.AddHostedService<SkillDuel.Api.Workers.MatchmakingBackgroundWorker>();
 builder.Services.AddScoped<IGameService, GameService>();
 builder.Services.AddScoped<IGameNotificationService, GameNotificationService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IQuestionService, QuestionService>();
 builder.Services.AddScoped<IFriendshipService, FriendshipService>();
-builder.Services.AddScoped<MatchmakingJob>();
 builder.Services.AddScoped<CleanupExpiredRoomsJob>();
 
 // FluentValidation
@@ -188,11 +189,6 @@ await WaitForDatabaseAsync(connectionString, logger);
 using (var scope = app.Services.CreateScope())
 {
     var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
-    recurringJobManager.AddOrUpdate<MatchmakingJob>(
-        "matchmaking-job",
-        job => job.RunAsync(),
-        "*/10 * * * * *" // Her 10 saniyede bir
-    );
     recurringJobManager.AddOrUpdate<CleanupExpiredRoomsJob>(
         "cleanup-expired-rooms-job",
         job => job.RunAsync(),
