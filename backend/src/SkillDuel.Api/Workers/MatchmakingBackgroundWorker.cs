@@ -49,13 +49,15 @@ public class MatchmakingBackgroundWorker : BackgroundService
 
                 if (result.HasValue)
                 {
+                    _logger.LogInformation("Matchmaking trigger received, evaluating queues...");
                     using var scope = _serviceProvider.CreateScope();
                     var processor = scope.ServiceProvider.GetRequiredService<MatchmakingProcessor>();
                     await processor.EvaluateAllQueuesAsync();
+                    await _db.ListRemoveAsync(RedisKeys.MatchmakingProcessingQueue, result);
                 }
                 else
                 {
-                    // Trigger yok, kısa bekle — Upstash'i döverek boşa istek atmıyoruz
+                    _logger.LogDebug("No trigger, sleeping...");
                     await Task.Delay(500, stoppingToken);
                 }
             }
