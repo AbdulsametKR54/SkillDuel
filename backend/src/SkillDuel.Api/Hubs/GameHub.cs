@@ -21,6 +21,7 @@ public class GameHub : Hub<IGameHub>
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IConnectionMultiplexer _redis;
+    private readonly ILogger<GameHub> _logger;
 
     public GameHub(
         IMatchmakingService matchmakingService, 
@@ -29,7 +30,8 @@ public class GameHub : Hub<IGameHub>
         IRoomRepository roomRepository,
         IUserRepository userRepository,
         IUnitOfWork unitOfWork,
-        IConnectionMultiplexer redis)
+        IConnectionMultiplexer redis,
+        ILogger<GameHub> logger)
     {
         _matchmakingService = matchmakingService;
         _gameService = gameService;
@@ -38,6 +40,7 @@ public class GameHub : Hub<IGameHub>
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
         _redis = redis;
+        _logger = logger;
     }
 
     public async Task JoinRoomGroup(string roomCode)
@@ -182,11 +185,12 @@ public class GameHub : Hub<IGameHub>
         await base.OnConnectedAsync();
     }
 
-    public async Task JoinMatchmaking(GameMode mode, Guid? categoryId, DifficultyLevel? difficulty, QuestionType? questionType)
-    {
-        var userId = GetUserId();
-        await _matchmakingService.JoinQueueAsync(userId, mode, categoryId, difficulty, questionType);
-    }
+public async Task JoinMatchmaking(GameMode mode, Guid? categoryId, DifficultyLevel? difficulty, QuestionType? questionType)
+{
+    var userId = GetUserId();
+    _logger.LogInformation("JoinMatchmaking called: userId={UserId}, mode={Mode}", userId, mode);
+    await _matchmakingService.JoinQueueAsync(userId, mode, categoryId, difficulty, questionType);
+}
 
     public async Task LeaveMatchmaking()
     {
