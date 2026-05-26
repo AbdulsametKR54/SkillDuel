@@ -75,9 +75,12 @@ public class MatchmakingProcessor
             int rounds = (int)mode;
             string queueKey = RedisKeys.MatchmakingQueue(rounds);
 
+            // Bounded fast-exit check
+            long queueLength = await _db.SortedSetLengthAsync(queueKey);
+            if (queueLength < 2) continue;
+
             // Fetch players ordered by ELO
             var rawMembers = await _db.SortedSetRangeByRankAsync(queueKey, 0, -1);
-            if (rawMembers.Length < 2) continue;
 
             var players = rawMembers
                 .Select(x => MatchmakingSerializer.Deserialize(x.ToString()))

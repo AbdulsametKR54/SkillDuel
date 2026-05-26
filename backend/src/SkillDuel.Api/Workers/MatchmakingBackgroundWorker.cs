@@ -34,6 +34,15 @@ public class MatchmakingBackgroundWorker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Circuit Breaker / Kill Switch check
+            var isDisabled = Environment.GetEnvironmentVariable("MATCHMAKING_DISABLE");
+            if (!string.IsNullOrEmpty(isDisabled) && isDisabled.Equals("true", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Matchmaking Worker is disabled via MATCHMAKING_DISABLE env kill-switch.");
+                await Task.Delay(10000, stoppingToken);
+                continue;
+            }
+
             try
             {
                 // Perform Block Pop / Event Pop against trigger queue.

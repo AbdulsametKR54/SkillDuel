@@ -189,6 +189,11 @@ await WaitForDatabaseAsync(connectionString, logger);
 using (var scope = app.Services.CreateScope())
 {
     var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+    
+    // Explicitly delete any old, orphaned recurring jobs referencing the obsolete type
+    recurringJobManager.RemoveIfExists("matchmaking-job");
+    recurringJobManager.RemoveIfExists("matchmaking");
+
     recurringJobManager.AddOrUpdate<CleanupExpiredRoomsJob>(
         "cleanup-expired-rooms-job",
         job => job.RunAsync(),
