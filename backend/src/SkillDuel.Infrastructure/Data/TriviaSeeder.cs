@@ -30,28 +30,42 @@ public class TriviaSeeder
     {
         try
         {
-            if (await _context.Questions.CountAsync() >= 100) return 0;
-            
-            var totalApprovedCount = _context.Questions.Count(q => q.Status == QuestionStatus.Approved);
-            if (totalApprovedCount >= 100)
+            // Early exit: enough approved questions already exist
+            if (await _context.Questions.CountAsync(q => q.Status == QuestionStatus.Approved) >= 100)
             {
-                _logger.LogInformation("Seeder skipped: Already have {Count} approved questions.", totalApprovedCount);
+                _logger.LogInformation("Seeder skipped: Already have 100+ approved questions.");
                 return 0;
             }
 
-            var categories = _context.Categories.Where(c => c.OpenTdbId != null).ToList();
+            // --- 1 DB query: load ALL existing question texts into a HashSet ---
+            var existingTexts = (await _context.Questions
+                .Select(q => q.Text)
+                .ToListAsync())
+                .ToHashSet();
+
+            _logger.LogInformation("Loaded {Count} existing question texts into dedup cache.", existingTexts.Count);
+
+            var categories = await _context.Categories
+                .Where(c => c.OpenTdbId != null)
+                .ToListAsync();
+
             int totalInserted = 0;
+            var random = new Random();
 
             foreach (var category in categories)
             {
-                var approvedInCategory = _context.Questions.Count(q => q.CategoryId == category.Id && q.Status == QuestionStatus.Approved);
+                var approvedInCategory = await _context.Questions
+                    .CountAsync(q => q.CategoryId == category.Id && q.Status == QuestionStatus.Approved);
+
                 if (approvedInCategory >= 40)
                 {
-                    _logger.LogInformation("Category {Name} already has {Count} approved questions. Skipping.", category.Name, approvedInCategory);
+                    _logger.LogInformation("Category {Name}: already has {Count} approved questions. Skipping.",
+                        category.Name, approvedInCategory);
                     continue;
                 }
 
-                _logger.LogInformation("Category {Name}: approved count {Count} < 40. Fetching 50 from OpenTDB...", category.Name, approvedInCategory);
+                _logger.LogInformation("Category {Name}: approved={Count}. Fetching from OpenTDB...",
+                    category.Name, approvedInCategory);
 
                 var url = $"https://opentdb.com/api.php?amount=50&category={category.OpenTdbId}&type=multiple";
                 var response = await _httpClient.GetStringAsync(url);
@@ -59,58 +73,63 @@ public class TriviaSeeder
 
                 if (result?.Results == null || !result.Results.Any())
                 {
-                    _logger.LogWarning("Category {Name}: No questions received from Trivia API.", category.Name);
+                    _logger.LogWarning("Category {Name}: No questions received from OpenTDB.", category.Name);
                     await Task.Delay(1500);
                     continue;
                 }
 
-                int fetchedCount = result.Results.Count;
-                int insertedInCategory = 0;
-                int skippedInCategory = 0;
-
-                var random = new Random();
-                foreach (var triviaQuestion in result.Results)
+                // --- Decode all fetched questions in memory ---
+                var decoded = result.Results.Select(t => new
                 {
-                    var questionText = WebUtility.HtmlDecode(triviaQuestion.Question);
-                    
-                    // Check if question with same text already exists
-                    var exists = _context.Questions.Any(q => q.Text == questionText);
-                    if (exists)
-                    {
-                        skippedInCategory++;
-                        continue;
-                    }
+                    Text       = WebUtility.HtmlDecode(t.Question),
+                    Correct    = WebUtility.HtmlDecode(t.CorrectAnswer),
+                    Incorrect  = t.IncorrectAnswers.Select(a => WebUtility.HtmlDecode(a)).ToList(),
+                    Difficulty = WebUtility.HtmlDecode(t.Difficulty)
+                }).ToList();
 
-                    var options = triviaQuestion.IncorrectAnswers.Select(a => WebUtility.HtmlDecode(a)).ToList();
-                    options = options.OrderBy(x => random.Next()).ToList();
-                    
-                    var decodedCorrectAnswer = WebUtility.HtmlDecode(triviaQuestion.CorrectAnswer);
-                    var correctIndex = random.Next(options.Count + 1);
-                    options.Insert(correctIndex, decodedCorrectAnswer);
+                // --- In-memory dedup against the HashSet (no extra DB queries) ---
+                var newDecoded = decoded.Where(d => !existingTexts.Contains(d.Text)).ToList();
 
-                    var question = new Question
-                    {
-                        Text = questionText,
-                        Options = options.ToArray(),
-                        CorrectOptionIndex = correctIndex,
-                        DifficultyLevel = MapDifficulty(WebUtility.HtmlDecode(triviaQuestion.Difficulty)),
-                        QuestionType = QuestionType.Multiple,
-                        CategoryId = category.Id,
-                        Status = QuestionStatus.Approved
-                    };
-
-                    _context.Questions.Add(question);
-                    insertedInCategory++;
+                if (!newDecoded.Any())
+                {
+                    _logger.LogInformation("Category {Name}: all {Count} fetched questions already exist. Skipping.",
+                        category.Name, decoded.Count);
+                    await Task.Delay(1500);
+                    continue;
                 }
 
-                await _context.SaveChangesAsync();
-                totalInserted += insertedInCategory;
-                
-                _logger.LogInformation("Category {name}: fetched {count}, inserted {inserted}, skipped {skipped}", 
-                    category.Name, fetchedCount, insertedInCategory, skippedInCategory);
+                // --- Build Question entities ---
+                var newQuestions = newDecoded.Select(d =>
+                {
+                    var options = d.Incorrect.OrderBy(_ => random.Next()).ToList();
+                    var correctIndex = random.Next(options.Count + 1);
+                    options.Insert(correctIndex, d.Correct);
 
-                // Add delay to avoid rate limiting
-                await Task.Delay(1500);
+                    return new Question
+                    {
+                        Text               = d.Text,
+                        Options            = options.ToArray(),
+                        CorrectOptionIndex = correctIndex,
+                        DifficultyLevel    = MapDifficulty(d.Difficulty),
+                        QuestionType       = QuestionType.Multiple,
+                        CategoryId         = category.Id,
+                        Status             = QuestionStatus.Approved
+                    };
+                }).ToList();
+
+                // --- 1 bulk INSERT per category ---
+                await _context.Questions.AddRangeAsync(newQuestions);
+                await _context.SaveChangesAsync();
+
+                // Keep HashSet current so cross-category duplicates are also caught
+                foreach (var q in newQuestions) existingTexts.Add(q.Text);
+
+                totalInserted += newQuestions.Count;
+
+                _logger.LogInformation("Category {Name}: fetched={Fetched}, new={New}, skipped={Skipped}",
+                    category.Name, decoded.Count, newQuestions.Count, decoded.Count - newQuestions.Count);
+
+                await Task.Delay(1500); // Respect OpenTDB rate limit
             }
 
             _logger.LogInformation("Seeding complete. Total inserted: {Total}", totalInserted);
@@ -122,6 +141,7 @@ public class TriviaSeeder
             return 0;
         }
     }
+
 
     private DifficultyLevel MapDifficulty(string difficulty)
     {
