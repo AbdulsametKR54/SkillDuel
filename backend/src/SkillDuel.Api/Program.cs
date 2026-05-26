@@ -57,7 +57,11 @@ builder.Services.AddHangfire(config => config
     .UseSimpleAssemblyNameTypeSerializer()
     .UseRecommendedSerializerSettings()
     .UsePostgreSqlStorage(options => options.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
-builder.Services.AddHangfireServer(options => options.WorkerCount = 1);
+builder.Services.AddHangfireServer(options =>
+{
+    options.WorkerCount = 1;
+    options.SchedulePollingInterval = TimeSpan.FromSeconds(30);
+});
 
 // SignalR
 builder.Services.AddSignalR();
