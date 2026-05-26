@@ -20,12 +20,16 @@ using SkillDuel.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// CORS
+// CORS – environment-aware
+var allowedOrigins = builder.Environment.IsDevelopment()
+    ? new[] { "http://localhost:3000" }
+    : new[] { builder.Configuration["AllowedOrigins"] ?? "https://skill-duel-pi.vercel.app" };
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
