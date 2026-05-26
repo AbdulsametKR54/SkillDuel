@@ -234,7 +234,7 @@ public async Task JoinMatchmaking(GameMode mode, Guid? categoryId, DifficultyLev
         var userId = GetUserId();
         var db = _redis.GetDatabase();
         await db.KeyDeleteAsync($"skillduel:userconnection:{userId}");
-        await _matchmakingService.LeaveQueueAsync(userId);
+        // LeaveQueueAsync kaldırıldı — processor 60s timeout ile temizler
         await base.OnDisconnectedAsync(exception);
     }
 
