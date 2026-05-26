@@ -23,7 +23,7 @@ public class MatchmakingProcessor
     private readonly ILogger<MatchmakingProcessor> _logger;
 
     // SignalR helper dependency inside application layer using generic hub context to stay decoupled
-    private readonly object _hubContext; 
+    private readonly IHubContext<GameHub, IGameHub> _hubContext;
 
     // Atomic Lua Script to securely claim two matched players synchronously across multiple nodes
     private const string MatchClaimLua = @"
@@ -50,7 +50,7 @@ public class MatchmakingProcessor
         IUnitOfWork unitOfWork,
         IGameService gameService,
         ILogger<MatchmakingProcessor> logger,
-        IServiceProvider serviceProvider)
+        IHubContext<GameHub, IGameHub> hubContext)  // direkt inject et
     {
         _redis = redis;
         _db = _redis.GetDatabase();
@@ -59,11 +59,7 @@ public class MatchmakingProcessor
         _unitOfWork = unitOfWork;
         _gameService = gameService;
         _logger = logger;
-
-        // Dynamically get IHubContext if registered (keeps dependencies safe during initialization)
-        _hubContext = serviceProvider.GetService(typeof(IHubContext<>).MakeGenericType(
-            Type.GetType("SkillDuel.Api.Hubs.GameHub, SkillDuel.Api") ?? typeof(object)
-        ))!;
+        _hubContext = hubContext;
     }
 
     public async Task EvaluateAllQueuesAsync()
@@ -168,44 +164,38 @@ public class MatchmakingProcessor
         await _gameSessionRepository.AddAsync(session);
         await _unitOfWork.SaveChangesAsync();
 
-        // Dispatch hub notification dynamically
-        if (_hubContext != null)
+        var players = new[]
         {
-            dynamic hub = _hubContext;
-            await hub.Clients.User(p1.UserId.ToString()).SendAsync("MatchFound", new
-            {
-                SessionId = session.Id,
-                MyId = p1.UserId,
-                Players = new[] { 
-                    new { Id = p1.UserId, Username = player1.Username, Elo = player1.EloRating },
-                    new { Id = p2.UserId, Username = player2.Username, Elo = player2.EloRating }
-                }
-            });
+            new { Id = p1.UserId, Username = player1.Username, Elo = player1.EloRating },
+            new { Id = p2.UserId, Username = player2.Username, Elo = player2.EloRating }
+        };
 
-            await hub.Clients.User(p2.UserId.ToString()).SendAsync("MatchFound", new
-            {
-                SessionId = session.Id,
-                MyId = p2.UserId,
-                Players = new[] { 
-                    new { Id = p1.UserId, Username = player1.Username, Elo = player1.EloRating },
-                    new { Id = p2.UserId, Username = player2.Username, Elo = player2.EloRating }
-                }
-            });
-        }
+        await _hubContext.Clients.User(p1.UserId.ToString()).MatchFound(new
+        {
+            SessionId = session.Id,
+            MyId = p1.UserId,
+            Players = players
+        });
 
-        // Start Game
+        await _hubContext.Clients.User(p2.UserId.ToString()).MatchFound(new
+        {
+            SessionId = session.Id,
+            MyId = p2.UserId,
+            Players = players
+        });
+
         await _gameService.StartGameAsync(
-            session.Id, 
-            mode, 
-            p1.CategoryId == Guid.Empty ? null : p1.CategoryId, 
-            p2.CategoryId == Guid.Empty ? null : p2.CategoryId, 
-            p1.Difficulty == -1 ? null : (DifficultyLevel)p1.Difficulty, 
-            p2.Difficulty == -1 ? null : (DifficultyLevel)p2.Difficulty, 
-            p1.QuestionType == -1 ? null : (QuestionType)p1.QuestionType, 
+            session.Id,
+            mode,
+            p1.CategoryId == Guid.Empty ? null : p1.CategoryId,
+            p2.CategoryId == Guid.Empty ? null : p2.CategoryId,
+            p1.Difficulty == -1 ? null : (DifficultyLevel)p1.Difficulty,
+            p2.Difficulty == -1 ? null : (DifficultyLevel)p2.Difficulty,
+            p1.QuestionType == -1 ? null : (QuestionType)p1.QuestionType,
             p2.QuestionType == -1 ? null : (QuestionType)p2.QuestionType,
-            p1.UserId, 
+            p1.UserId,
             p2.UserId,
-            player1.Username, 
+            player1.Username,
             player2.Username
         );
     }
