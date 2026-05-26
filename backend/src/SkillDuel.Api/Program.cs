@@ -191,12 +191,12 @@ using (var scope = app.Services.CreateScope())
     recurringJobManager.AddOrUpdate<MatchmakingJob>(
         "matchmaking-job",
         job => job.RunAsync(),
-        "*/2 * * * * *" // Her 2 saniyede bir
+        "*/10 * * * * *" // Her 10 saniyede bir
     );
     recurringJobManager.AddOrUpdate<CleanupExpiredRoomsJob>(
         "cleanup-expired-rooms-job",
         job => job.RunAsync(),
-        "*/5 * * * *" // Her 5 dakikada bir
+        "*/10 * * * * *" // Her 10 saniyede bir
     );
 }
 
