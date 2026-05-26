@@ -59,9 +59,14 @@ export const useMatchmaking = () => {
     try {
       await signalRService.ensureConnected();
       const connection = signalRService.getConnection();
+      console.log('Connection state:', connection?.state);
+      console.log('Invoking JoinMatchmaking with:', { mode, categoryId, difficulty, questionType });
+
       if (connection) {
-        // GameMode: Short = 5, Long = 10
         await connection.invoke('JoinMatchmaking', mode, categoryId, difficulty, questionType);
+        console.log('JoinMatchmaking invoked successfully');
+      } else {
+        console.error('Connection is null!');
       }
     } catch (error) {
       console.error('Failed to start matchmaking:', error);
