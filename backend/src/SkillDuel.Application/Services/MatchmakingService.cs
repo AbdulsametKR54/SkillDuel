@@ -44,7 +44,7 @@ public class MatchmakingService : IMatchmakingService
         await _db.SortedSetAddAsync(RedisKeys.MatchmakingQueue(rounds), memberStr, elo);
 
         // Trigger matchmaking engine background BLPOP queue (wake worker instantly)
-        await _db.ListLeftPushAsync(RedisKeysExtensions.MatchmakingTriggerQueue, "trigger");
+        await _db.ListLeftPushAsync(RedisKeys.MatchmakingTriggerQueue, "trigger");
     }
 
     public async Task LeaveQueueAsync(Guid userId)

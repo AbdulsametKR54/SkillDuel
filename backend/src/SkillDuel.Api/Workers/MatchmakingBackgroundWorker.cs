@@ -34,40 +34,39 @@ public class MatchmakingBackgroundWorker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            // Circuit Breaker / Kill Switch check
             var isDisabled = Environment.GetEnvironmentVariable("MATCHMAKING_DISABLE");
             if (!string.IsNullOrEmpty(isDisabled) && isDisabled.Equals("true", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogWarning("Matchmaking Worker is disabled via MATCHMAKING_DISABLE env kill-switch.");
+                _logger.LogWarning("Matchmaking Worker is disabled via kill-switch.");
                 await Task.Delay(10000, stoppingToken);
                 continue;
             }
 
             try
             {
-                // Perform Block Pop / Event Pop against trigger queue.
-                var result = await _db.ListRightPopLeftPushAsync(
-                    RedisKeysExtensions.MatchmakingTriggerQueue,
-                    "skillduel:matchmaking:processing"
-                );
+                // BLPOP: trigger gelene kadar blokla (5 saniye timeout, sonra tekrar bekle)
+                var result = await _db.ListLeftPopAsync(RedisKeys.MatchmakingTriggerQueue);
 
                 if (result.HasValue)
                 {
-                    // Create scoped services to run evaluation safely
-                    using (var scope = _serviceProvider.CreateScope())
-                    {
-                        var processor = scope.ServiceProvider.GetRequiredService<MatchmakingProcessor>();
-                        await processor.EvaluateAllQueuesAsync();
-                    }
-
-                    // Remove processed trigger token
-                    await _db.ListRemoveAsync("skillduel:matchmaking:processing", result);
+                    using var scope = _serviceProvider.CreateScope();
+                    var processor = scope.ServiceProvider.GetRequiredService<MatchmakingProcessor>();
+                    await processor.EvaluateAllQueuesAsync();
                 }
+                else
+                {
+                    // Trigger yok, kısa bekle — Upstash'i döverek boşa istek atmıyoruz
+                    await Task.Delay(500, stoppingToken);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred in Matchmaking Background Worker.");
-                await Task.Delay(2000, stoppingToken); // Backoff delay on error
+                _logger.LogError(ex, "Matchmaking Background Worker error.");
+                await Task.Delay(2000, stoppingToken);
             }
         }
     }
