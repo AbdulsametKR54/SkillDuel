@@ -149,54 +149,58 @@ public class MatchmakingProcessor
 
     private async Task CreateAndStartSessionAsync(MatchmakingMember p1, MatchmakingMember p2, GameMode mode)
     {
-        var player1 = await _userRepository.GetByIdAsync(p1.UserId);
-        var player2 = await _userRepository.GetByIdAsync(p2.UserId);
-
-        if (player1 == null || player2 == null) return;
-
-        var session = new GameSession
+        try
         {
-            Player1Id = p1.UserId,
-            Player2Id = p2.UserId,
-            Status = GameStatus.Active
-        };
+            var player1 = await _userRepository.GetByIdAsync(p1.UserId);
+            var player2 = await _userRepository.GetByIdAsync(p2.UserId);
 
-        await _gameSessionRepository.AddAsync(session);
-        await _unitOfWork.SaveChangesAsync();
+            if (player1 == null || player2 == null) return;
 
-        var players = new[]
+            var session = new GameSession
+            {
+                Player1Id = p1.UserId,
+                Player2Id = p2.UserId,
+                Status = GameStatus.Active
+            };
+
+            await _gameSessionRepository.AddAsync(session);
+            await _unitOfWork.SaveChangesAsync();
+
+            var players = new[]
+            {
+                new { Id = p1.UserId, Username = player1.Username, Elo = player1.EloRating },
+                new { Id = p2.UserId, Username = player2.Username, Elo = player2.EloRating }
+            };
+
+            await _hubContext.Clients.User(p1.UserId.ToString()).MatchFound(new
+            {
+                SessionId = session.Id,
+                MyId = p1.UserId,
+                Players = players
+            });
+
+            await _hubContext.Clients.User(p2.UserId.ToString()).MatchFound(new
+            {
+                SessionId = session.Id,
+                MyId = p2.UserId,
+                Players = players
+            });
+
+            await _gameService.StartGameAsync(
+                session.Id, mode,
+                p1.CategoryId == Guid.Empty ? null : p1.CategoryId,
+                p2.CategoryId == Guid.Empty ? null : p2.CategoryId,
+                p1.Difficulty == -1 ? null : (DifficultyLevel)p1.Difficulty,
+                p2.Difficulty == -1 ? null : (DifficultyLevel)p2.Difficulty,
+                p1.QuestionType == -1 ? null : (QuestionType)p1.QuestionType,
+                p2.QuestionType == -1 ? null : (QuestionType)p2.QuestionType,
+                p1.UserId, p2.UserId,
+                player1.Username, player2.Username
+            );
+        }
+        catch (Exception ex)
         {
-            new { Id = p1.UserId, Username = player1.Username, Elo = player1.EloRating },
-            new { Id = p2.UserId, Username = player2.Username, Elo = player2.EloRating }
-        };
-
-        await _hubContext.Clients.User(p1.UserId.ToString()).MatchFound(new
-        {
-            SessionId = session.Id,
-            MyId = p1.UserId,
-            Players = players
-        });
-
-        await _hubContext.Clients.User(p2.UserId.ToString()).MatchFound(new
-        {
-            SessionId = session.Id,
-            MyId = p2.UserId,
-            Players = players
-        });
-
-        await _gameService.StartGameAsync(
-            session.Id,
-            mode,
-            p1.CategoryId == Guid.Empty ? null : p1.CategoryId,
-            p2.CategoryId == Guid.Empty ? null : p2.CategoryId,
-            p1.Difficulty == -1 ? null : (DifficultyLevel)p1.Difficulty,
-            p2.Difficulty == -1 ? null : (DifficultyLevel)p2.Difficulty,
-            p1.QuestionType == -1 ? null : (QuestionType)p1.QuestionType,
-            p2.QuestionType == -1 ? null : (QuestionType)p2.QuestionType,
-            p1.UserId,
-            p2.UserId,
-            player1.Username,
-            player2.Username
-        );
+            _logger.LogError(ex, "CreateAndStartSessionAsync failed: {Message}", ex.Message);
+            throw;
+        }
     }
-}
