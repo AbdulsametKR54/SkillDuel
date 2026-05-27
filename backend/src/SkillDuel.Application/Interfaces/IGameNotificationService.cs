@@ -12,4 +12,5 @@ public interface IGameNotificationService
     Task SendGameErrorAsync(Guid sessionId, string message);
     Task SendMatchmakingTimeoutAsync(Guid userId);
     Task SendFriendRequestNotificationAsync(Guid receiverUserId, string senderUsername);
+    Task SendMatchFoundAsync(Guid userId, object data);
 }

@@ -224,7 +224,19 @@ public class GameService : IGameService
 
         for (int i = 0; i < questions.Count; i++)
         {
-            var qJson = System.Text.Json.JsonSerializer.Serialize(questions[i]);
+            var simplifiedQuestion = new 
+            {
+                Id = questions[i].Id,
+                Text = questions[i].Text,
+                Options = questions[i].Options,
+                CorrectOptionIndex = questions[i].CorrectOptionIndex,
+                QuestionType = questions[i].QuestionType,
+                DifficultyLevel = questions[i].DifficultyLevel,
+                CategoryId = questions[i].CategoryId,
+                CategoryName = questions[i].Category?.Name
+            };
+
+            var qJson = System.Text.Json.JsonSerializer.Serialize(simplifiedQuestion);
             hashEntries.Add(new($"Q{i + 1}_Data", qJson));
             hashEntries.Add(new($"Q{i + 1}_Correct", questions[i].CorrectOptionIndex));
         }

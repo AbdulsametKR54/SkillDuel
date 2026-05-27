@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using SkillDuel.Application.Interfaces;
 using SkillDuel.Domain.Entities;
@@ -22,8 +21,8 @@ public class MatchmakingProcessor
     private readonly IGameService _gameService;
     private readonly ILogger<MatchmakingProcessor> _logger;
 
-    // SignalR helper dependency inside application layer using generic hub context to stay decoupled
-    private readonly IHubContext<GameHub, IGameHub> _hubContext;
+    // Using application layer abstraction to notify players
+    private readonly IGameNotificationService _notificationService;
 
     // Atomic Lua Script to securely claim two matched players synchronously across multiple nodes
     private const string MatchClaimLua = @"
@@ -50,7 +49,7 @@ public class MatchmakingProcessor
         IUnitOfWork unitOfWork,
         IGameService gameService,
         ILogger<MatchmakingProcessor> logger,
-        IHubContext<GameHub, IGameHub> hubContext)  // direkt inject et
+        IGameNotificationService notificationService)
     {
         _redis = redis;
         _db = _redis.GetDatabase();
@@ -59,7 +58,7 @@ public class MatchmakingProcessor
         _unitOfWork = unitOfWork;
         _gameService = gameService;
         _logger = logger;
-        _hubContext = hubContext;
+        _notificationService = notificationService;
     }
 
     public async Task EvaluateAllQueuesAsync()
@@ -172,14 +171,14 @@ public class MatchmakingProcessor
                 new { Id = p2.UserId, Username = player2.Username, Elo = player2.EloRating }
             };
 
-            await _hubContext.Clients.User(p1.UserId.ToString()).MatchFound(new
+            await _notificationService.SendMatchFoundAsync(p1.UserId, new
             {
                 SessionId = session.Id,
                 MyId = p1.UserId,
                 Players = players
             });
 
-            await _hubContext.Clients.User(p2.UserId.ToString()).MatchFound(new
+            await _notificationService.SendMatchFoundAsync(p2.UserId, new
             {
                 SessionId = session.Id,
                 MyId = p2.UserId,
@@ -200,7 +199,9 @@ public class MatchmakingProcessor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CreateAndStartSessionAsync failed: {Message}", ex.Message);
+            _logger.LogError("CreateAndStartSessionAsync EXCEPTION TYPE: {Type}, MESSAGE: {Message}, STACK: {Stack}",
+                ex.GetType().Name, ex.Message, ex.StackTrace);
             throw;
         }
     }
+}

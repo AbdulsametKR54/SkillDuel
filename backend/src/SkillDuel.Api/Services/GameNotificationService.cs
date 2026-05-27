@@ -58,4 +58,9 @@ public class GameNotificationService : IGameNotificationService
             await _hubContext.Clients.Client(connId.ToString()).FriendRequestReceived(senderUsername);
         }
     }
+
+    public async Task SendMatchFoundAsync(Guid userId, object data)
+    {
+        await _hubContext.Clients.User(userId.ToString()).MatchFound(data);
+    }
 }
