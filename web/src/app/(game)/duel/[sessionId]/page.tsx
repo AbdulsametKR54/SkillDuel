@@ -34,8 +34,13 @@ export default function DuelPage() {
       if (!isMounted) return;
       const conn = signalRService.getConnection();
       if (conn) {
-        const handleReconnecting = () => setOpponentReconnecting(true);
-        const handleReconnected = () => setOpponentReconnecting(false);
+        const handleReconnecting = (data: any) => {
+           // Toast gösterilebilir, state ile UI'ı bloke etmeye gerek yok
+           console.log("Opponent reconnecting", data);
+        };
+        const handleReconnected = (data: any) => {
+           console.log("Opponent reconnected", data);
+        };
         conn.on('OpponentReconnecting', handleReconnecting);
         conn.on('OpponentReconnected', handleReconnected);
       }

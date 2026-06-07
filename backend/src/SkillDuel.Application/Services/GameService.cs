@@ -402,6 +402,41 @@ public class GameService : IGameService
         }
     }
 
+    public async Task PlayerDisconnectedAsync(Guid sessionId, Guid playerId)
+    {
+        var stateKey = RedisKeys.GameState(sessionId.ToString());
+        var state = await _db.HashGetAllAsync(stateKey);
+        if (state.Length == 0) return;
+
+        var countEntry = state.FirstOrDefault(x => x.Name == "PlayerCount");
+        if (countEntry.Value.IsNull) return;
+
+        int playerCount = (int)countEntry.Value;
+        if (playerCount <= 1) return;
+
+        // Decrement player count
+        int newPlayerCount = playerCount - 1;
+        await _db.HashSetAsync(stateKey, new HashEntry[] { new("PlayerCount", newPlayerCount) });
+
+        if (newPlayerCount <= 1)
+        {
+            _logger.LogInformation("[Game] Session {SessionId}: Player dropped, only 1 player remaining. Ending game.", sessionId);
+            await EndGameAsync(sessionId);
+            return;
+        }
+
+        // Check if remaining players have all answered the current round
+        int currentRound = (int)state.First(x => x.Name == "CurrentRound").Value;
+        var newState = await _db.HashGetAllAsync(stateKey);
+        int answersCount = newState.Count(x => x.Name.ToString().EndsWith($"_R{currentRound}_Answered"));
+
+        if (answersCount >= newPlayerCount)
+        {
+            _logger.LogInformation("[Game] Session {SessionId}: Player dropped, remaining {NewCount} players already answered Round {Round}. Evaluating...", sessionId, newPlayerCount, currentRound);
+            await EvaluateRoundAsync(sessionId, currentRound);
+        }
+    }
+
     public async Task HandleTimeoutAsync(Guid sessionId, int roundNumber)
     {
         var stateKey = RedisKeys.GameState(sessionId.ToString());
@@ -435,10 +470,13 @@ public class GameService : IGameService
 
         string[] suffixes = { "P1", "P2", "P3", "P4" };
         
-        for (int i = 0; i < playerCount; i++)
+        for (int i = 0; i < suffixes.Length; i++)
         {
             string suffix = suffixes[i];
-            Guid pid = Guid.Parse(state.First(x => x.Name == $"{suffix}Id").Value!);
+            var idEntry = state.FirstOrDefault(x => x.Name == $"{suffix}Id");
+            if (idEntry.Value.IsNull) continue;
+
+            Guid pid = Guid.Parse(idEntry.Value!);
             
             var ans = state.FirstOrDefault(x => x.Name == $"{suffix}_R{roundNumber}_Option");
             var time = state.FirstOrDefault(x => x.Name == $"{suffix}_R{roundNumber}_TimeMs");
@@ -488,10 +526,13 @@ public class GameService : IGameService
 
         if (categoryId != Guid.Empty)
         {
-            for (int i = 0; i < playerCount; i++)
+            for (int i = 0; i < suffixes.Length; i++)
             {
                 string suffix = suffixes[i];
-                Guid pid = Guid.Parse(state.First(x => x.Name == $"{suffix}Id").Value!);
+                var idEntry = state.FirstOrDefault(x => x.Name == $"{suffix}Id");
+                if (idEntry.Value.IsNull) continue;
+
+                Guid pid = Guid.Parse(idEntry.Value!);
                 var ans = state.FirstOrDefault(x => x.Name == $"{suffix}_R{roundNumber}_Option");
                 bool isCorrect = !ans.Value.IsNull && (int)ans.Value == correctIndex;
 
@@ -521,10 +562,13 @@ public class GameService : IGameService
         correctPlayers = correctPlayers.OrderBy(p => p.Time).ToList();
         int[] scoreTiers = { 100, 75, 50, 25 };
 
-        for (int i = 0; i < playerCount; i++)
+        for (int i = 0; i < suffixes.Length; i++)
         {
             string suffix = suffixes[i];
-            Guid pid = Guid.Parse(state.First(x => x.Name == $"{suffix}Id").Value!);
+            var idEntry = state.FirstOrDefault(x => x.Name == $"{suffix}Id");
+            if (idEntry.Value.IsNull) continue;
+
+            Guid pid = Guid.Parse(idEntry.Value!);
             
             int roundScore = 0;
             var correctEntry = correctPlayers.Select((p, idx) => new { p.Suffix, Rank = idx }).FirstOrDefault(p => p.Suffix == suffix);
@@ -614,10 +658,13 @@ public class GameService : IGameService
         string[] suffixes = { "P1", "P2", "P3", "P4" };
         var playersData = new List<(string Suffix, Guid Id, string Username, int Score, User User)>();
 
-        for (int i = 0; i < playerCount; i++)
+        for (int i = 0; i < suffixes.Length; i++)
         {
             string suffix = suffixes[i];
-            Guid pid = Guid.Parse(state.First(x => x.Name == $"{suffix}Id").Value!);
+            var idEntry = state.FirstOrDefault(x => x.Name == $"{suffix}Id");
+            if (idEntry.Value.IsNull) continue;
+
+            Guid pid = Guid.Parse(idEntry.Value!);
             string username = state.First(x => x.Name == $"{suffix}Username").Value!;
             int score = (int)state.First(x => x.Name == $"{suffix}Score").Value;
             var user = await _userRepository.GetByIdAsync(pid);
@@ -635,8 +682,10 @@ public class GameService : IGameService
         int kFactor = totalRounds <= 5 ? 32 : 48;
         var newElos = new Dictionary<Guid, int>();
         var eloDeltas = new Dictionary<Guid, int>();
+        
+        int originalPlayerCount = playersData.Count;
 
-        if (playerCount == 2)
+        if (originalPlayerCount <= 2)
         {
             var p1 = playersData[0].User;
             var p2 = playersData[1].User;
@@ -666,7 +715,7 @@ public class GameService : IGameService
                 {
                     if (p1.Id == p2.Id) continue;
                     double actual = p1.Score > p2.Score ? 1 : (p1.Score == p2.Score ? 0.5 : 0);
-                    int mockNewElo = EloCalculator.CalculateNewRating(oldElo, p2.User.EloRating, actual, kFactor / (playerCount - 1));
+                    int mockNewElo = EloCalculator.CalculateNewRating(oldElo, p2.User.EloRating, actual, kFactor / (originalPlayerCount - 1));
                     ratingChange += (mockNewElo - oldElo);
                 }
                 p1.User.EloRating += ratingChange;

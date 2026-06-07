@@ -63,9 +63,10 @@ export const useGame = () => {
       setGameStatus('ended');
     };
 
-    const handleOpponentDisconnected = () => {
-      setOpponentDisconnected(true);
-      setGamePhase('game_over');
+    const handleOpponentDisconnected = (data: any) => {
+      // Backend maçı bitirmesi gerekiyorsa GameEnded event'i gönderir.
+      // Sadece 1 kişi düşünce direkt oyunu bitirme mantığını kaldırıyoruz.
+      // İsteğe bağlı olarak burada sadece bir toast gösterilebilir.
     };
 
     const handleEmoteReceived = (playerId: string, emote: string) => {

@@ -262,10 +262,7 @@ public async Task JoinMatchmaking(GameMode mode, Guid? categoryId, DifficultyLev
         {
             if (exception == null) // Intentional disconnect (Senaryo A)
             {
-                activeSession.Status = GameStatus.Finished;
-                activeSession.EndedAt = DateTime.UtcNow;
-                await _gameSessionRepository.UpdateAsync(activeSession);
-                await _unitOfWork.SaveChangesAsync();
+                await _gameService.PlayerDisconnectedAsync(activeSession.Id, userId);
                 await Clients.Group(activeSession.Id.ToString()).OpponentDisconnected(new { userId = userId });
             }
             else // Connection dropped (Senaryo B)
@@ -281,19 +278,11 @@ public async Task JoinMatchmaking(GameMode mode, Guid? categoryId, DifficultyLev
                     if (conn.IsNull)
                     {
                         using var scope = _serviceProvider.CreateScope();
-                        var sessionRepo = scope.ServiceProvider.GetRequiredService<IGameSessionRepository>();
-                        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+                        var gameService = scope.ServiceProvider.GetRequiredService<IGameService>();
                         var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<GameHub, IGameHub>>();
 
-                        var sess = await sessionRepo.GetByIdAsync(activeSession.Id);
-                        if (sess != null && sess.Status != GameStatus.Finished)
-                        {
-                            sess.Status = GameStatus.Finished;
-                            sess.EndedAt = DateTime.UtcNow;
-                            await sessionRepo.UpdateAsync(sess);
-                            await uow.SaveChangesAsync();
-                            await hubContext.Clients.Group(sess.Id.ToString()).OpponentDisconnected(new { userId = userId });
-                        }
+                        await gameService.PlayerDisconnectedAsync(activeSession.Id, userId);
+                        await hubContext.Clients.Group(activeSession.Id.ToString()).OpponentDisconnected(new { userId = userId });
                     }
                 });
             }

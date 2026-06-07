@@ -20,4 +20,5 @@ public interface IGameService
     Task SubmitAnswerAsync(Guid sessionId, Guid playerId, int optionIndex, long timeMs);
     Task HandleTimeoutAsync(Guid sessionId, int roundNumber);
     Task<ApiResponse<List<MatchHistoryResponse>>> GetMatchHistoryAsync(Guid userId, int page = 1, int pageSize = 10);
+    Task PlayerDisconnectedAsync(Guid sessionId, Guid playerId);
 }
