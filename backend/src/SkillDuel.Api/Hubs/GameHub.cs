@@ -153,8 +153,19 @@ public class GameHub : Hub<IGameHub>
             });
         }
 
-        // Delay starting the game to give clients time to navigate to the duel page and connect
-        await Task.Delay(4000);
+        // Delay starting the game until players invoke JoinGameGroup or max 10s wait
+        string joinedKey = $"room:joined:{session.Id}";
+        int waited = 0;
+        while (waited < 10000)
+        {
+            var joinedCount = await db.SetLengthAsync(joinedKey);
+            if (joinedCount >= room.Players.Count)
+            {
+                break; // Tüm oyuncular JoinGameGroup invoke etti
+            }
+            await Task.Delay(200);
+            waited += 200;
+        }
 
         // Start Game logic
         await _gameService.StartGameAsync(session.Id, mode,
@@ -227,6 +238,12 @@ public async Task JoinMatchmaking(GameMode mode, Guid? categoryId, DifficultyLev
     public async Task JoinGameGroup(Guid sessionId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, sessionId.ToString());
+
+        var userId = GetUserId();
+        var db = _redis.GetDatabase();
+        string joinedKey = $"room:joined:{sessionId}";
+        await db.SetAddAsync(joinedKey, userId.ToString());
+        await db.KeyExpireAsync(joinedKey, TimeSpan.FromMinutes(5));
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
