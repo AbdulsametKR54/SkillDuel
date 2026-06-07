@@ -169,14 +169,6 @@ export default function RoomPage() {
         conn?.on('PlayerLeft', async (data: any) => {
           console.log(`[RoomPage] SignalR Event: PlayerLeft ->`, data);
 
-          setRoom((prev: any) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              players: prev.players.filter((p: any) => p.userId !== data.userId)
-            };
-          });
-
           try {
             const rRes = await roomsApi.get(code);
             setRoom(rRes.data);
@@ -274,12 +266,14 @@ export default function RoomPage() {
   const isHost = room?.players?.find(p => p.slotNumber === 1)?.userId === me?.id;
 
   const handleLeaveRoom = useCallback(async () => {
-    if (isHost) {
-      try {
+    try {
+      if (isHost) {
         await roomsApi.delete(code);
-      } catch (err) {
-        console.error("Failed to delete room on leave", err);
+      } else {
+        await roomsApi.leave(code);
       }
+    } catch (err) {
+      console.error("Failed to leave/delete room", err);
     }
     router.push('/lobby');
   }, [isHost, code, router]);

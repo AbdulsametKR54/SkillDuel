@@ -143,12 +143,31 @@ export default function LobbyPage() {
         fetchFriendRequests();
         fetchFriends();
       });
+
+      const conn = signalRService.getConnection();
+      if (conn) {
+        conn.on('PlayerLeft', () => {
+          if (activeTab === 'browse') {
+            fetchRooms();
+          }
+        });
+        conn.on('RoomClosed', () => {
+          if (activeTab === 'browse') {
+            fetchRooms();
+          }
+        });
+      }
     });
 
     return () => {
+      const conn = signalRService.getConnection();
+      if (conn) {
+        conn.off('PlayerLeft');
+        conn.off('RoomClosed');
+      }
       signalRService.removeHandlers();
     };
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     Promise.all([usersApi.me(), categoriesApi.list()])

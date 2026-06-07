@@ -23,19 +23,22 @@ public class RoomsController : ControllerBase
     private readonly IUserRepository _userRepository;
     private readonly ICategoryRepository _categoryRepository;
     private readonly IHubContext<GameHub, IGameHub> _hubContext;
+    private readonly SkillDuel.Infrastructure.Data.SkillDuelDbContext _dbContext;
 
     public RoomsController(
         IRoomRepository roomRepository,
         IUnitOfWork unitOfWork,
         IUserRepository userRepository,
         ICategoryRepository categoryRepository,
-        IHubContext<GameHub, IGameHub> hubContext)
+        IHubContext<GameHub, IGameHub> hubContext,
+        SkillDuel.Infrastructure.Data.SkillDuelDbContext dbContext)
     {
         _roomRepository = roomRepository;
         _unitOfWork = unitOfWork;
         _userRepository = userRepository;
         _categoryRepository = categoryRepository;
         _hubContext = hubContext;
+        _dbContext = dbContext;
     }
 
     [HttpPost]
@@ -201,6 +204,37 @@ public class RoomsController : ControllerBase
         await _unitOfWork.SaveChangesAsync();
 
         await _hubContext.Clients.Group(room.Code.ToUpper()).RoomClosed();
+
+        return Ok(ApiResponse.SuccessResult());
+    }
+
+    [HttpPost("{code}/leave")]
+    public async Task<IActionResult> LeaveRoom(string code)
+    {
+        var userId = GetUserId();
+        var room = await _roomRepository.GetByCodeAsync(code.ToUpper());
+        
+        if (room == null) return NotFound(ApiResponse.FailureResult("Room not found."));
+
+        var player = room.Players.FirstOrDefault(p => p.UserId == userId);
+        if (player != null)
+        {
+            room.Players.Remove(player);
+            _dbContext.RoomPlayers.Remove(player);
+            
+            if (room.GuestId == userId)
+            {
+                room.GuestId = null;
+            }
+
+            if (room.Players.Count < room.MaxPlayers && room.Status == RoomStatus.Ready)
+            {
+                room.Status = RoomStatus.Waiting;
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await _hubContext.Clients.Group(room.Code.ToUpper()).PlayerLeft(new { userId = userId });
+        }
 
         return Ok(ApiResponse.SuccessResult());
     }

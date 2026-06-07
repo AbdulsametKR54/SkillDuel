@@ -109,6 +109,7 @@ export const roomsApi = {
   create: (data: any) => api.post('/api/Rooms', data).then(r => r.data),
   join: (code: string, data: any) => api.post(`/api/Rooms/${code}/join`, data).then(r => r.data),
   delete: (code: string) => api.delete(`/api/Rooms/${code}`).then(r => r.data),
+  leave: (code: string) => api.post(`/api/Rooms/${code}/leave`).then(r => r.data),
 };
 
 
