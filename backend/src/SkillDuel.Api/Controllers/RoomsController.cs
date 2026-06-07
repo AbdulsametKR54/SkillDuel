@@ -200,6 +200,8 @@ public class RoomsController : ControllerBase
         room.Status = RoomStatus.Closed;
         await _unitOfWork.SaveChangesAsync();
 
+        await _hubContext.Clients.Group(room.Code.ToUpper()).RoomClosed();
+
         return Ok(ApiResponse.SuccessResult());
     }
 

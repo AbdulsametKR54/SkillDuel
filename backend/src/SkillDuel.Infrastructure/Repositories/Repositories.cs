@@ -201,7 +201,8 @@ public class RoomRepository : GenericRepository<Room>, IRoomRepository
         return await _dbSet
             .Include(r => r.Host)
             .Include(r => r.Players).ThenInclude(p => p.User)
-            .FirstOrDefaultAsync(r => r.Status == RoomStatus.Waiting && r.Players.Any(p => p.UserId == userId));
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefaultAsync(r => r.Status != RoomStatus.Closed && r.Players.Any(p => p.UserId == userId));
     }
 }
 

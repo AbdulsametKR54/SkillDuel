@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { roomsApi, usersApi, friendsApi } from '@/lib/api';
 import signalRService from '@/lib/signalr';
 import { useGameStore } from '@/lib/store';
+import { useCallback } from 'react';
 import { Loader2, Send, User as UserIcon, Shield, Copy, Share2, LogOut, Swords, MessageSquare, Users, MailCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -43,13 +44,21 @@ export default function RoomPage() {
   const [startingGame, setStartingGame] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const { setGameStatus, setSessionId, setUserId } = useGameStore();
+  const setGameStatus = useGameStore(state => state.setGameStatus);
+  const setSessionId = useGameStore(state => state.setSessionId);
+  const setUserId = useGameStore(state => state.setUserId);
+
+  const roomRef = useRef(room);
+  const meRef = useRef(me);
+
+  useEffect(() => { roomRef.current = room; }, [room]);
+  useEffect(() => { meRef.current = me; }, [me]);
 
   const [friends, setFriends] = useState<any[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [invitedFriends, setInvitedFriends] = useState<string[]>([]);
 
-  const fetchFriends = async () => {
+  const fetchFriends = useCallback(async () => {
     setFriendsLoading(true);
     try {
       const res = await friendsApi.list();
@@ -59,9 +68,9 @@ export default function RoomPage() {
     } finally {
       setFriendsLoading(false);
     }
-  };
+  }, []);
 
-  const handleInviteFriend = async (friendId: string) => {
+  const handleInviteFriend = useCallback(async (friendId: string) => {
     try {
       await signalRService.inviteFriend(friendId, code);
       setInvitedFriends(prev => [...prev, friendId]);
@@ -69,7 +78,7 @@ export default function RoomPage() {
     } catch (e) {
       toast.error("Davet gönderilemedi.");
     }
-  };
+  }, [code]);
 
   useEffect(() => {
     fetchFriends();
@@ -77,7 +86,9 @@ export default function RoomPage() {
 
   useEffect(() => {
     let isMounted = true;
-    const fetchData = async () => {
+    let signalRSetup = false;
+
+    const init = async () => {
       console.log(`[RoomPage] Mounting room ${code}. Fetching data...`);
       try {
         const [rRes, uRes] = await Promise.all([
@@ -89,15 +100,16 @@ export default function RoomPage() {
         if (!isMounted) return;
         setRoom(rRes.data);
         setMe(uRes.data);
-        
-        console.log(`[RoomPage] Joining SignalR room group ${code}...`);
-        await signalRService.joinRoomGroup(code);
-        console.log(`[RoomPage] Joined SignalR room group ${code}.`);
 
+        if (signalRSetup) return;
+        signalRSetup = true;
+
+        console.log(`[RoomPage] Ensuring SignalR connection...`);
+        await signalRService.ensureConnected();
         if (!isMounted) return;
 
         const conn = signalRService.getConnection();
-        
+
         // Clear existing handlers to prevent double registration
         conn?.off('GuestJoined');
         conn?.off('RoomMessage');
@@ -105,13 +117,18 @@ export default function RoomPage() {
         conn?.off('MatchFound');
         conn?.off('RoomClosed');
         conn?.off('PlayerLeft');
+        conn?.off('OpponentDisconnected');
+
+        console.log(`[RoomPage] Joining SignalR room group ${code}...`);
+        await signalRService.joinRoomGroup(code);
+        console.log(`[RoomPage] Joined SignalR room group ${code}.`);
 
         signalRService.onGuestJoined(async (guestUsername) => {
           console.log(`[RoomPage] SignalR Event: onGuestJoined -> ${guestUsername}`);
           try {
             const rRes = await roomsApi.get(code);
             setRoom(rRes.data);
-          } catch(e) {
+          } catch (e) {
             console.error("Failed to fetch room on guest joined", e);
           }
           toast.success(`${guestUsername} joined the room!`);
@@ -151,16 +168,26 @@ export default function RoomPage() {
 
         conn?.on('PlayerLeft', async (data: any) => {
           console.log(`[RoomPage] SignalR Event: PlayerLeft ->`, data);
+
+          setRoom((prev: any) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              players: prev.players.filter((p: any) => p.userId !== data.userId)
+            };
+          });
+
           try {
             const rRes = await roomsApi.get(code);
             setRoom(rRes.data);
-          } catch(e) {
+          } catch (e) {
             console.error("Failed to fetch room on player left", e);
           }
           toast.info("Bir oyuncu odadan ayrıldı.");
         });
+
       } catch (err) {
-        console.error(`[RoomPage] Error fetching data or joining group:`, err);
+        console.error(`[RoomPage] Error fetching data or joining SignalR group:`, err);
         toast.error("Room not found or unauthorized");
         router.push('/lobby');
       } finally {
@@ -168,39 +195,41 @@ export default function RoomPage() {
       }
     };
 
-    fetchData();
+    init();
 
     return () => {
       isMounted = false;
-      console.log(`[RoomPage] Unmounting. Leaving SignalR room group ${code}...`);
-      const conn = signalRService.getConnection();
-      conn?.off('GuestJoined');
-      conn?.off('RoomMessage');
-      conn?.off('RoomGameStarting');
-      conn?.off('MatchFound');
-      conn?.off('RoomClosed');
-      conn?.off('PlayerLeft');
-      signalRService.leaveRoomGroup(code);
+      if (signalRSetup) {
+        console.log(`[RoomPage] Unmounting. Leaving SignalR room group ${code}...`);
+        const conn = signalRService.getConnection();
+        conn?.off('GuestJoined');
+        conn?.off('RoomMessage');
+        conn?.off('RoomGameStarting');
+        conn?.off('MatchFound');
+        conn?.off('RoomClosed');
+        conn?.off('PlayerLeft');
+        signalRService.leaveRoomGroup(code);
+      }
     };
-  }, [code, router, setSessionId, setUserId, setGameStatus]);
+  }, [code]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
-    
+
     try {
       await signalRService.sendRoomMessage(code, newMessage);
       setNewMessage('');
     } catch (err) {
       toast.error("Failed to send message");
     }
-  };
+  }, [code, newMessage]);
 
-  const handleStartGame = async () => {
+  const handleStartGame = useCallback(async () => {
     if (startingGame) return;
     setStartingGame(true);
     try {
@@ -209,9 +238,9 @@ export default function RoomPage() {
       toast.error("Failed to start game");
       setStartingGame(false);
     }
-  };
+  }, [code, startingGame]);
 
-  const handleJoinClick = async () => {
+  const handleJoinClick = useCallback(async () => {
     try {
       if (room?.isPrivate) {
         const pwd = prompt("Enter room password:");
@@ -220,7 +249,7 @@ export default function RoomPage() {
       } else {
         await roomsApi.join(code, {});
       }
-      
+
       toast.success("Joined room successfully!");
       // Refetch data
       const [rRes, uRes] = await Promise.all([roomsApi.get(code), usersApi.me()]);
@@ -230,27 +259,21 @@ export default function RoomPage() {
       const msg = err.response?.data?.error || err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : err.message) || "Failed to join room";
       toast.error(msg);
     }
-  };
+  }, [code, room]);
 
-  const copyCode = () => {
+  const copyCode = useCallback(() => {
     navigator.clipboard.writeText(code);
     toast.success("Room code copied!");
-  };
+  }, [code]);
 
-  const shareRoom = () => {
+  const shareRoom = useCallback(() => {
     navigator.clipboard.writeText(window.location.href);
     toast.success("Room link copied!");
-  };
+  }, []);
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
-  if (!room) return null;
+  const isHost = room?.players?.find(p => p.slotNumber === 1)?.userId === me?.id;
 
-  const isJoined = room.players?.some(p => p.userId === me?.id) || false;
-  const isHost = room.players?.find(p => p.slotNumber === 1)?.userId === me?.id;
-  const notJoined = !isJoined;
-  const canStart = isHost && room.players?.length === room.maxPlayers;
-
-  const handleLeaveRoom = async () => {
+  const handleLeaveRoom = useCallback(async () => {
     if (isHost) {
       try {
         await roomsApi.delete(code);
@@ -259,7 +282,14 @@ export default function RoomPage() {
       }
     }
     router.push('/lobby');
-  };
+  }, [isHost, code, router]);
+
+  if (loading) return <div className="flex items-center justify-center min-h-screen bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  if (!room) return null;
+
+  const isJoined = room.players?.some(p => p.userId === me?.id) || false;
+  const notJoined = !isJoined;
+  const canStart = isHost && room.players?.length === room.maxPlayers;
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -293,7 +323,7 @@ export default function RoomPage() {
               const slotNumber = idx + 1;
               const player = room.players?.find(p => p.slotNumber === slotNumber);
               const isSlotHost = slotNumber === 1;
-              
+
               return (
                 <div key={idx} className={`bg-card border-2 ${isSlotHost ? 'border-primary/20' : player ? 'border-primary/20' : 'border-dashed border-border'} rounded-2xl p-6 flex flex-col items-center justify-center space-y-4 transition-all`}>
                   {player ? (
@@ -349,10 +379,10 @@ export default function RoomPage() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="pt-6">
                 {notJoined ? (
-                  <button 
+                  <button
                     onClick={handleJoinClick}
                     className="w-full h-14 text-lg font-black rounded-2xl transition-all uppercase tracking-wider flex items-center justify-center gap-3 bg-gradient-accent text-white shadow-lg hover:opacity-90 active:scale-95"
                   >
@@ -360,7 +390,7 @@ export default function RoomPage() {
                     JOIN ROOM
                   </button>
                 ) : isHost ? (
-                  <button 
+                  <button
                     onClick={handleStartGame}
                     disabled={!canStart || startingGame}
                     className={`w-full h-14 text-lg font-black rounded-2xl transition-all uppercase tracking-wider flex items-center justify-center gap-3 ${canStart && !startingGame ? 'bg-gradient-accent text-white shadow-lg hover:opacity-90 active:scale-95' : 'bg-muted text-muted-foreground cursor-not-allowed'}`}
@@ -410,11 +440,10 @@ export default function RoomPage() {
                           <button
                             onClick={() => handleInviteFriend(f.friendId)}
                             disabled={isInvited}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
-                              isInvited 
-                                ? 'bg-[#3fb950]/15 text-[#3fb950] border border-[#3fb950]/30' 
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${isInvited
+                                ? 'bg-[#3fb950]/15 text-[#3fb950] border border-[#3fb950]/30'
                                 : 'bg-primary text-white hover:opacity-90 active:scale-95'
-                            }`}
+                              }`}
                           >
                             {isInvited ? (
                               <><MailCheck className="h-3 w-3" /> Davet Edildi</>
@@ -459,8 +488,8 @@ export default function RoomPage() {
             <div ref={chatEndRef} />
           </div>
           <form onSubmit={handleSendMessage} className="p-4 bg-input border-t border-border flex gap-2">
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={newMessage}
               onChange={e => setNewMessage(e.target.value)}
               placeholder="Type a message..."
