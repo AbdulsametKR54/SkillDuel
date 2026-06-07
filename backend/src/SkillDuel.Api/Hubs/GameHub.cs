@@ -6,6 +6,7 @@ using SkillDuel.Domain.Enums;
 using System;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 
 using StackExchange.Redis;
 
@@ -22,6 +23,7 @@ public class GameHub : Hub<IGameHub>
     private readonly IUnitOfWork _unitOfWork;
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<GameHub> _logger;
+    private readonly IServiceProvider _serviceProvider;
 
     public GameHub(
         IMatchmakingService matchmakingService, 
@@ -31,7 +33,8 @@ public class GameHub : Hub<IGameHub>
         IUserRepository userRepository,
         IUnitOfWork unitOfWork,
         IConnectionMultiplexer redis,
-        ILogger<GameHub> logger)
+        ILogger<GameHub> logger,
+        IServiceProvider serviceProvider)
     {
         _matchmakingService = matchmakingService;
         _gameService = gameService;
@@ -41,6 +44,7 @@ public class GameHub : Hub<IGameHub>
         _unitOfWork = unitOfWork;
         _redis = redis;
         _logger = logger;
+        _serviceProvider = serviceProvider;
     }
 
     public async Task JoinRoomGroup(string roomCode)
@@ -191,6 +195,7 @@ public class GameHub : Hub<IGameHub>
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, activeSession.Id.ToString());
             Console.WriteLine($"[SignalR] User {userId} reconnected to session group {activeSession.Id}");
+            await Clients.Group(activeSession.Id.ToString()).OpponentReconnected(new { userId = userId });
         }
 
         await base.OnConnectedAsync();
@@ -251,7 +256,49 @@ public async Task JoinMatchmaking(GameMode mode, Guid? categoryId, DifficultyLev
         var userId = GetUserId();
         var db = _redis.GetDatabase();
         await db.KeyDeleteAsync($"skillduel:userconnection:{userId}");
-        // LeaveQueueAsync kaldırıldı — processor 60s timeout ile temizler
+        
+        var activeSession = await _gameSessionRepository.GetActiveSessionByUserIdAsync(userId);
+        if (activeSession != null && activeSession.Status != GameStatus.Finished)
+        {
+            if (exception == null) // Intentional disconnect (Senaryo A)
+            {
+                activeSession.Status = GameStatus.Finished;
+                activeSession.EndedAt = DateTime.UtcNow;
+                await _gameSessionRepository.UpdateAsync(activeSession);
+                await _unitOfWork.SaveChangesAsync();
+                await Clients.Group(activeSession.Id.ToString()).OpponentDisconnected(new { userId = userId });
+            }
+            else // Connection dropped (Senaryo B)
+            {
+                await Clients.Group(activeSession.Id.ToString()).OpponentReconnecting(new { userId = userId });
+                
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(30000); // 30 saniye bekle
+                    
+                    var currentDb = _redis.GetDatabase();
+                    var conn = await currentDb.StringGetAsync($"skillduel:userconnection:{userId}");
+                    if (conn.IsNull)
+                    {
+                        using var scope = _serviceProvider.CreateScope();
+                        var sessionRepo = scope.ServiceProvider.GetRequiredService<IGameSessionRepository>();
+                        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+                        var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<GameHub, IGameHub>>();
+
+                        var sess = await sessionRepo.GetByIdAsync(activeSession.Id);
+                        if (sess != null && sess.Status != GameStatus.Finished)
+                        {
+                            sess.Status = GameStatus.Finished;
+                            sess.EndedAt = DateTime.UtcNow;
+                            await sessionRepo.UpdateAsync(sess);
+                            await uow.SaveChangesAsync();
+                            await hubContext.Clients.Group(sess.Id.ToString()).OpponentDisconnected(new { userId = userId });
+                        }
+                    }
+                });
+            }
+        }
+
         await base.OnDisconnectedAsync(exception);
     }
 

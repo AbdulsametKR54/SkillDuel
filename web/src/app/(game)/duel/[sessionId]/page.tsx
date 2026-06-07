@@ -6,7 +6,8 @@ import { useGameStore } from '@/lib/store';
 import { usersApi } from '@/lib/api';
 import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Check, X } from 'lucide-react';
+import { Check, X, AlertTriangle } from 'lucide-react';
+import signalRService from '@/lib/signalr';
 
 export default function DuelPage() {
   const params = useParams();
@@ -24,6 +25,39 @@ export default function DuelPage() {
   const [timer, setTimer] = useState(15);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [roundStartTime, setRoundStartTime] = useState<number>(0);
+  const [opponentReconnecting, setOpponentReconnecting] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const setup = async () => {
+      await signalRService.ensureConnected();
+      if (!isMounted) return;
+      const conn = signalRService.getConnection();
+      if (conn) {
+        const handleReconnecting = () => setOpponentReconnecting(true);
+        const handleReconnected = () => setOpponentReconnecting(false);
+        conn.on('OpponentReconnecting', handleReconnecting);
+        conn.on('OpponentReconnected', handleReconnected);
+      }
+    };
+    setup();
+
+    return () => {
+      isMounted = false;
+      const conn = signalRService.getConnection();
+      if (conn) {
+        conn.off('OpponentReconnecting');
+        conn.off('OpponentReconnected');
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (opponentDisconnected) {
+      const t = setTimeout(() => handleBackToLobby(), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [opponentDisconnected]);
 
   useEffect(() => {
     usersApi.me().then(res => setUserId(res.data.id)).catch(console.error);
@@ -42,10 +76,15 @@ export default function DuelPage() {
   useEffect(() => {
     if (gamePhase === 'active') {
       setTimer(15); setSelectedOption(null); setRoundStartTime(Date.now());
+    }
+  }, [gamePhase]);
+
+  useEffect(() => {
+    if (gamePhase === 'active' && !opponentReconnecting) {
       const iv = setInterval(() => setTimer(p => { if (p <= 0) { clearInterval(iv); return 0; } return p - 1; }), 1000);
       return () => clearInterval(iv);
     }
-  }, [gamePhase]);
+  }, [gamePhase, opponentReconnecting]);
 
   const handleAnswer = async (index: number) => {
     if (gamePhase !== 'active' || selectedOption !== null) return;
@@ -132,6 +171,22 @@ export default function DuelPage() {
   /* ── Active / Answered / Round Result ─────────────────────── */
   return (
     <div className="min-h-screen bg-background flex flex-col p-4 md:p-8 max-w-4xl mx-auto overflow-hidden">
+      {opponentReconnecting && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-card border border-yellow-500/30 p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6 max-w-sm w-full text-center">
+            <div className="relative bg-yellow-500/10 p-4 rounded-full text-yellow-500">
+              <AlertTriangle className="h-12 w-12" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-foreground mb-2">Bağlantı Koptu</h2>
+              <p className="text-sm text-muted-foreground">Bir oyuncunun bağlantısı koptu. Yeniden bağlanması bekleniyor... (Maksimum 30s)</p>
+            </div>
+            <div className="w-full h-2 bg-input rounded-full overflow-hidden">
+              <div className="h-full bg-yellow-500 w-full animate-[shrink_30s_linear_forwards]" />
+            </div>
+          </div>
+        </div>
+      )}
       {/* Scoreboard */}
       <div className="bg-card p-6 rounded-3xl border border-border shadow-xl mb-8 relative pt-10">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-accent text-white px-6 py-2 rounded-full text-sm font-black uppercase tracking-widest shadow-lg border-2 border-background">

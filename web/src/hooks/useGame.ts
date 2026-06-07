@@ -72,13 +72,23 @@ export const useGame = () => {
       triggerPlayerEmote(playerId, emote);
     };
 
-    signalRService.onRoundStarted(handleRoundStarted);
-    signalRService.onRoundResult(handleRoundResult);
-    signalRService.onGameEnded(handleGameEnded);
-    signalRService.onOpponentDisconnected(handleOpponentDisconnected);
-    signalRService.onEmoteReceived(handleEmoteReceived);
+    let isMounted = true;
+
+    const setupListeners = async () => {
+      await signalRService.ensureConnected();
+      if (!isMounted) return;
+
+      signalRService.onRoundStarted(handleRoundStarted);
+      signalRService.onRoundResult(handleRoundResult);
+      signalRService.onGameEnded(handleGameEnded);
+      signalRService.onOpponentDisconnected(handleOpponentDisconnected);
+      signalRService.onEmoteReceived(handleEmoteReceived);
+    };
+
+    setupListeners();
 
     return () => {
+      isMounted = false;
       signalRService.removeHandlers();
     };
   }, [
