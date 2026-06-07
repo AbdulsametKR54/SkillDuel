@@ -29,6 +29,7 @@ public interface IRoomRepository : IGenericRepository<Room>
 {
     Task<Room?> GetByCodeAsync(string code);
     Task<List<Room>> GetPublicWaitingRoomsAsync();
+    Task<Room?> GetActiveRoomByUserIdAsync(Guid userId);
 }
 public interface IUserCategoryStatRepository : IGenericRepository<UserCategoryStat>
 {

@@ -20,5 +20,7 @@ public interface IGameHub
     Task OpponentDisconnected(object data);
     Task OpponentReconnecting(object data);
     Task OpponentReconnected(object data);
+    Task RoomClosed();
+    Task PlayerLeft(object data);
 }
 

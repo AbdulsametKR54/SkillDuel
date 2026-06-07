@@ -298,6 +298,36 @@ public async Task JoinMatchmaking(GameMode mode, Guid? categoryId, DifficultyLev
                 });
             }
         }
+        else
+        {
+            var activeRoom = await _roomRepository.GetActiveRoomByUserIdAsync(userId);
+            _logger.LogInformation($"[OnDisconnectedAsync] User {userId} activeRoom check: {(activeRoom != null ? activeRoom.Code : "null")}");
+            if (activeRoom != null)
+            {
+                if (activeRoom.HostId == userId)
+                {
+                    _logger.LogInformation($"[OnDisconnectedAsync] User {userId} is Host. Closing room {activeRoom.Code}.");
+                    // Senaryo B: Host çıkarsa oda kapanmalı
+                    activeRoom.Status = RoomStatus.Closed;
+                    await _roomRepository.UpdateAsync(activeRoom);
+                    await _unitOfWork.SaveChangesAsync();
+                    await Clients.Group(activeRoom.Code.ToUpper()).RoomClosed();
+                }
+                else
+                {
+                    _logger.LogInformation($"[OnDisconnectedAsync] User {userId} is Player. Removing from room {activeRoom.Code}.");
+                    // Senaryo A: Oyuncu odadan çıkarsa
+                    var player = activeRoom.Players.FirstOrDefault(p => p.UserId == userId);
+                    if (player != null)
+                    {
+                        activeRoom.Players.Remove(player);
+                        await _roomRepository.UpdateAsync(activeRoom);
+                        await _unitOfWork.SaveChangesAsync();
+                        await Clients.Group(activeRoom.Code.ToUpper()).PlayerLeft(new { userId = userId });
+                    }
+                }
+            }
+        }
 
         await base.OnDisconnectedAsync(exception);
     }

@@ -76,6 +76,7 @@ export default function RoomPage() {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchData = async () => {
       console.log(`[RoomPage] Mounting room ${code}. Fetching data...`);
       try {
@@ -85,80 +86,103 @@ export default function RoomPage() {
         ]);
         console.log(`[RoomPage] Data fetched successfully. Room data:`, rRes.data);
         console.log(`[RoomPage] User data:`, uRes.data);
+        if (!isMounted) return;
         setRoom(rRes.data);
         setMe(uRes.data);
         
         console.log(`[RoomPage] Joining SignalR room group ${code}...`);
         await signalRService.joinRoomGroup(code);
         console.log(`[RoomPage] Joined SignalR room group ${code}.`);
+
+        if (!isMounted) return;
+
+        const conn = signalRService.getConnection();
+        
+        // Clear existing handlers to prevent double registration
+        conn?.off('GuestJoined');
+        conn?.off('RoomMessage');
+        conn?.off('RoomGameStarting');
+        conn?.off('MatchFound');
+        conn?.off('RoomClosed');
+        conn?.off('PlayerLeft');
+
+        signalRService.onGuestJoined(async (guestUsername) => {
+          console.log(`[RoomPage] SignalR Event: onGuestJoined -> ${guestUsername}`);
+          try {
+            const rRes = await roomsApi.get(code);
+            setRoom(rRes.data);
+          } catch(e) {
+            console.error("Failed to fetch room on guest joined", e);
+          }
+          toast.success(`${guestUsername} joined the room!`);
+        });
+
+        signalRService.onRoomMessage((username, text, timestamp) => {
+          console.log(`[RoomPage] SignalR Event: onRoomMessage -> ${username}: ${text}`);
+          setMessages(prev => [...prev, { username, text, timestamp }]);
+        });
+
+        signalRService.onRoomGameStarting((sessionId) => {
+          console.log(`[RoomPage] SignalR Event: onRoomGameStarting -> sessionId: ${sessionId}`);
+          toast.success("Game starting...");
+        });
+
+        signalRService.onMatchFound((data: any) => {
+          console.log(`[RoomPage] SignalR Event: MatchFound!`, data);
+          setSessionId(data.sessionId);
+          setUserId(data.myId);
+          if (data.players) {
+            useGameStore.getState().setPlayers(data.players.map((p: any) => ({
+              id: p.id,
+              username: p.username,
+              elo: p.elo,
+              score: 0,
+              correctCount: 0
+            })));
+          }
+          setGameStatus('playing');
+          router.push(`/duel/${data.sessionId}`);
+        });
+
+        conn?.on('RoomClosed', () => {
+          toast.error("Oda sahibi ayrıldı, oda kapatıldı.");
+          router.push('/lobby');
+        });
+
+        conn?.on('PlayerLeft', async (data: any) => {
+          console.log(`[RoomPage] SignalR Event: PlayerLeft ->`, data);
+          try {
+            const rRes = await roomsApi.get(code);
+            setRoom(rRes.data);
+          } catch(e) {
+            console.error("Failed to fetch room on player left", e);
+          }
+          toast.info("Bir oyuncu odadan ayrıldı.");
+        });
       } catch (err) {
         console.error(`[RoomPage] Error fetching data or joining group:`, err);
         toast.error("Room not found or unauthorized");
         router.push('/lobby');
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     fetchData();
 
-    const conn = signalRService.getConnection();
-    
-    // Clear existing handlers to prevent double registration
-    conn?.off('GuestJoined');
-    conn?.off('RoomMessage');
-    conn?.off('RoomGameStarting');
-    conn?.off('MatchFound');
-
-    signalRService.onGuestJoined(async (guestUsername) => {
-      console.log(`[RoomPage] SignalR Event: onGuestJoined -> ${guestUsername}`);
-      try {
-        const rRes = await roomsApi.get(code);
-        setRoom(rRes.data);
-      } catch(e) {
-        console.error("Failed to fetch room on guest joined", e);
-      }
-      toast.success(`${guestUsername} joined the room!`);
-    });
-
-    signalRService.onRoomMessage((username, text, timestamp) => {
-      console.log(`[RoomPage] SignalR Event: onRoomMessage -> ${username}: ${text}`);
-      setMessages(prev => [...prev, { username, text, timestamp }]);
-    });
-
-    signalRService.onRoomGameStarting((sessionId) => {
-      console.log(`[RoomPage] SignalR Event: onRoomGameStarting -> sessionId: ${sessionId}`);
-      toast.success("Game starting...");
-      // Optional: Wait for MatchFound to do the actual push, or push here.
-      // We will let MatchFound do the push to ensure store is populated.
-    });
-
-    signalRService.onMatchFound((data: any) => {
-      console.log(`[RoomPage] SignalR Event: MatchFound!`, data);
-      setSessionId(data.sessionId);
-      setUserId(data.myId);
-      if (data.players) {
-        useGameStore.getState().setPlayers(data.players.map((p: any) => ({
-          id: p.id,
-          username: p.username,
-          elo: p.elo,
-          score: 0,
-          correctCount: 0
-        })));
-      }
-      setGameStatus('playing');
-      router.push(`/duel/${data.sessionId}`);
-    });
-
     return () => {
+      isMounted = false;
       console.log(`[RoomPage] Unmounting. Leaving SignalR room group ${code}...`);
+      const conn = signalRService.getConnection();
       conn?.off('GuestJoined');
       conn?.off('RoomMessage');
       conn?.off('RoomGameStarting');
       conn?.off('MatchFound');
+      conn?.off('RoomClosed');
+      conn?.off('PlayerLeft');
       signalRService.leaveRoomGroup(code);
     };
-  }, [code, router]);
+  }, [code, router, setSessionId, setUserId, setGameStatus]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });

@@ -195,6 +195,14 @@ public class RoomRepository : GenericRepository<Room>, IRoomRepository
             .OrderByDescending(r => r.CreatedAt)
             .ToListAsync();
     }
+
+    public async Task<Room?> GetActiveRoomByUserIdAsync(Guid userId)
+    {
+        return await _dbSet
+            .Include(r => r.Host)
+            .Include(r => r.Players).ThenInclude(p => p.User)
+            .FirstOrDefaultAsync(r => r.Status == RoomStatus.Waiting && r.Players.Any(p => p.UserId == userId));
+    }
 }
 
 public class UserCategoryStatRepository : GenericRepository<UserCategoryStat>, IUserCategoryStatRepository
