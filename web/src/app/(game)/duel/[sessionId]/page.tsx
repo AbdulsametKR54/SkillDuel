@@ -6,7 +6,7 @@ import { useGameStore } from '@/lib/store';
 import { usersApi } from '@/lib/api';
 import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Check, X, AlertTriangle } from 'lucide-react';
+import { Check, X, AlertTriangle, Loader2 } from 'lucide-react';
 import signalRService from '@/lib/signalr';
 
 export default function DuelPage() {
@@ -101,8 +101,32 @@ export default function DuelPage() {
 
   const totalRounds = question?.totalRounds || 5;
 
+  /* ── Preparing ────────────────────────────────────────────── */
+  if (gamePhase === 'preparing' || gameStatus === 'searching') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background text-center p-4">
+        <div className="space-y-6 max-w-md w-full animate-in fade-in zoom-in duration-500 flex flex-col items-center">
+          <div className="relative">
+            <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping" />
+            <div className="relative bg-gradient-accent p-6 rounded-full"><Loader2 className="h-12 w-12 text-white animate-spin" /></div>
+          </div>
+          <h1 className="text-3xl font-bold text-foreground mt-4">Sunucu Hazırlanıyor...</h1>
+          <p className="text-muted-foreground text-lg">Sorular yükleniyor, lütfen bekleyin.</p>
+          <div className="p-6 bg-card border border-border rounded-2xl flex flex-col gap-4 w-full mt-4">
+            {players.map((p) => (
+              <div key={p.id} className="flex justify-between items-center text-lg">
+                <div className={cn("font-semibold italic", p.id === userId ? "text-primary" : "text-muted-foreground")}>{p.username}</div>
+                <div className="text-sm font-bold text-muted-foreground bg-input px-2 py-1 rounded">Elo {p.elo}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   /* ── Waiting ──────────────────────────────────────────────── */
-  if (gamePhase === 'waiting' || gameStatus === 'searching') {
+  if (gamePhase === 'waiting') {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background text-center p-4">
         <div className="space-y-6 max-w-md w-full animate-in fade-in zoom-in duration-500">
@@ -117,6 +141,18 @@ export default function DuelPage() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Calculating ───────────────────────────────────────────── */
+  if (gamePhase === 'calculating') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background text-center p-4">
+        <div className="space-y-6 max-w-md w-full animate-in fade-in zoom-in duration-500 flex flex-col items-center">
+          <Loader2 className="h-12 w-12 text-primary animate-spin" />
+          <h1 className="text-3xl font-bold text-foreground">Skorlar Hesaplanıyor...</h1>
         </div>
       </div>
     );

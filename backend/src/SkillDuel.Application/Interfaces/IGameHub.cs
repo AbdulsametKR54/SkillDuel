@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 
 namespace SkillDuel.Application.Interfaces;
@@ -10,6 +11,7 @@ public interface IGameHub
     Task GameEnded(object data);
     Task GameError(object data);
     Task MatchmakingTimeout(object data);
+    Task GameReady();
     
     Task GuestJoined(string guestUsername);
     Task RoomMessage(string username, string message, string timestamp);
@@ -28,4 +30,3 @@ public interface IGameHub
     Task RoomSettingsUpdated(object data);
     Task HostChanged(Guid newAdminId);
 }
-

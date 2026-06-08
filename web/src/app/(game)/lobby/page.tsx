@@ -20,7 +20,12 @@ const chevron = <svg className="absolute right-4 top-1/2 -translate-y-1/2 pointe
 
 export default function LobbyPage() {
   const router = useRouter();
-  const { isSearching, startMatchmasking, cancelMatchmaking } = useMatchmaking();
+  const {
+    isSearching,
+    isMatchFound,
+    startMatchmasking,
+    cancelMatchmaking,
+  } = useMatchmaking();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -360,6 +365,14 @@ export default function LobbyPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {isMatchFound && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <h2 className="text-2xl font-bold tracking-tight">Rakip bulundu! Bağlanıyor...</h2>
+          </div>
+        </div>
+      )}
       {/* Top Bar */}
       <header className="sticky top-0 z-10 bg-background border-b border-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">

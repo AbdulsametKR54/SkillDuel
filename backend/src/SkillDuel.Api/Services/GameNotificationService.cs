@@ -44,6 +44,11 @@ public class GameNotificationService : IGameNotificationService
         await _hubContext.Clients.Group(sessionId.ToString()).GameError(new { message });
     }
 
+    public async Task SendGameReadyAsync(Guid sessionId)
+    {
+        await _hubContext.Clients.Group(sessionId.ToString()).GameReady();
+    }
+
     public async Task SendMatchmakingTimeoutAsync(Guid userId)
     {
         await _hubContext.Clients.User(userId.ToString()).MatchmakingTimeout(new { message = "No opponent found. Please try again." });

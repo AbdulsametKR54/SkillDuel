@@ -185,11 +185,8 @@ public class GameService : IGameService
         // 4. Merge and shuffle final list
         questions = questions.OrderBy(_ => Guid.NewGuid()).ToList();
 
-        var totalElapsed = DateTime.UtcNow - startTime;
-        if (totalElapsed.TotalMilliseconds < 4000)
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(4000 - totalElapsed.TotalMilliseconds));
-        }
+        await _notificationService.SendGameReadyAsync(sessionId);
+        await Task.Delay(3000);
 
         var hashEntries = new List<HashEntry>
         {

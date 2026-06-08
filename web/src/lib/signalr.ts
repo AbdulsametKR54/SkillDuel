@@ -88,6 +88,10 @@ class SignalRService {
     this.connection?.on('GameError', callback);
   }
 
+  public onGameReady(callback: () => void) {
+    this.connection?.on('GameReady', callback);
+  }
+
   // Room handlers
   public onGuestJoined(callback: (guestUsername: string) => void) {
     this.connection?.on('GuestJoined', callback);

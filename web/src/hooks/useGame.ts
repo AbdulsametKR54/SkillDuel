@@ -45,22 +45,25 @@ export const useGame = () => {
     };
 
     const handleGameEnded = (data: any) => {
-      setEndResult({
-        winnerId: data.winnerId,
-        winnerUsername: data.winnerUsername,
-      });
-      
-      if (data.players && Array.isArray(data.players)) {
-        updatePlayerStates(data.players.map((p: any) => ({
-          id: p.playerId,
-          score: p.finalScore,
-          newElo: p.newRating,
-          eloChange: p.ratingDelta
-        })));
-      }
+      setGamePhase('calculating');
+      setTimeout(() => {
+        setEndResult({
+          winnerId: data.winnerId,
+          winnerUsername: data.winnerUsername,
+        });
+        
+        if (data.players && Array.isArray(data.players)) {
+          updatePlayerStates(data.players.map((p: any) => ({
+            id: p.playerId,
+            score: p.finalScore,
+            newElo: p.newRating,
+            eloChange: p.ratingDelta
+          })));
+        }
 
-      setGamePhase('game_over');
-      setGameStatus('ended');
+        setGamePhase('game_over');
+        setGameStatus('ended');
+      }, 1500);
     };
 
     const handleOpponentDisconnected = (data: any) => {
@@ -84,6 +87,9 @@ export const useGame = () => {
       signalRService.onGameEnded(handleGameEnded);
       signalRService.onOpponentDisconnected(handleOpponentDisconnected);
       signalRService.onEmoteReceived(handleEmoteReceived);
+      signalRService.onGameReady(() => {
+        setGamePhase('waiting');
+      });
     };
 
     setupListeners();

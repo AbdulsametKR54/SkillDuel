@@ -8,22 +8,28 @@ export const useMatchmaking = () => {
   const { setGameStatus, setSessionId, setUserId, setPlayers } = useGameStore();
   const router = useRouter();
 
+  const [isMatchFound, setIsMatchFound] = useState(false);
+
   useEffect(() => {
     const handleMatchFound = (data: any) => {
       console.log('Match Found!', data);
-      setSessionId(data.sessionId);
-      setUserId(data.myId);
-      if (data.players) {
-        setPlayers(data.players.map((p: any) => ({
-          id: p.id,
-          username: p.username,
-          elo: p.elo,
-          score: 0,
-          correctCount: 0
-        })));
-      }
-      setGameStatus('playing');
-      router.push(`/duel/${data.sessionId}`);
+      setIsMatchFound(true);
+      
+      setTimeout(() => {
+        setSessionId(data.sessionId);
+        setUserId(data.myId);
+        if (data.players) {
+          setPlayers(data.players.map((p: any) => ({
+            id: p.id,
+            username: p.username,
+            elo: p.elo,
+            score: 0,
+            correctCount: 0
+          })));
+        }
+        setGameStatus('playing');
+        router.push(`/duel/${data.sessionId}`);
+      }, 500);
     };
 
     const handleMatchmakingTimeout = (data: any) => {
@@ -91,6 +97,7 @@ export const useMatchmaking = () => {
 
   return {
     isSearching,
+    isMatchFound,
     startMatchmasking,
     cancelMatchmaking,
   };

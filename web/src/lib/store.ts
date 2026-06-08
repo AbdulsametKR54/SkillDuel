@@ -28,7 +28,7 @@ interface GameState {
     questionType: string;
   } | null;
   gameStatus: 'idle' | 'searching' | 'playing' | 'ended';
-  gamePhase: 'waiting' | 'active' | 'answered' | 'round_result' | 'game_over';
+  gamePhase: 'preparing' | 'waiting' | 'active' | 'answered' | 'round_result' | 'calculating' | 'game_over';
   lastRoundResult: {
     correctOptionIndex: number;
     playerResults?: any[];
@@ -62,7 +62,7 @@ export const useGameStore = create<GameState>((set) => ({
   currentRound: 0,
   question: null,
   gameStatus: 'idle',
-  gamePhase: 'waiting',
+  gamePhase: 'preparing',
   lastRoundResult: null,
   endResult: null,
   opponentDisconnected: false,
@@ -107,7 +107,7 @@ export const useGameStore = create<GameState>((set) => ({
     currentRound: 0,
     question: null,
     gameStatus: 'idle',
-    gamePhase: 'waiting',
+    gamePhase: 'preparing',
     lastRoundResult: null,
     endResult: null,
     opponentDisconnected: false
