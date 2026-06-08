@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 
 interface UserProfile { id: string; username: string; email: string; eloRating: number; totalWins: number; totalLosses: number; totalGames: number; role?: string; }
 interface Category { id: string; name: string; }
-interface Room { id: string; code: string; name: string; hostUsername: string; categoryName?: string; difficulty?: string; maxPlayers: number; isPrivate: boolean; status: string; }
+interface Room { id: string; code: string; name: string; hostId: string; hostUsername: string; categoryName?: string; difficulty?: string; maxPlayers: number; isPrivate: boolean; status: string; players?: any[]; }
 
 const selectCls = 'w-full h-12 px-4 rounded-xl bg-input border border-border text-foreground text-sm outline-none appearance-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 font-medium';
 const chevron = <svg className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
@@ -56,7 +56,7 @@ export default function LobbyPage() {
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [friendUsername, setFriendUsername] = useState('');
   const [friendsLoading, setFriendsLoading] = useState(false);
-  const [inviteNotification, setInviteNotification] = useState<{ senderUsername: string; roomCode: string } | null>(null);
+  const [inviteNotification, setInviteNotification] = useState<{ senderId: string; senderUsername: string; roomCode: string } | null>(null);
 
   const fetchFriends = async () => {
     setFriendsLoading(true);
@@ -135,6 +135,14 @@ export default function LobbyPage() {
       signalRService.onFriendInviteReceived((data) => {
         console.log("[Lobby] Friend invite received:", data);
         setInviteNotification(data);
+        
+        // 15 saniye sonra bildirimi otomatik kapat
+        setTimeout(() => {
+          setInviteNotification(prev => {
+            if (prev?.roomCode === data.roomCode) return null;
+            return prev;
+          });
+        }, 15000);
       });
 
       signalRService.onFriendRequestReceived((senderUsername) => {
@@ -188,20 +196,25 @@ export default function LobbyPage() {
   }, []);
 
   useEffect(() => {
+    let interval: NodeJS.Timeout;
     if (activeTab === 'browse') {
-      fetchRooms();
+      fetchRooms(false); // First fetch with loading state
+      interval = setInterval(() => {
+        fetchRooms(true); // Silent fetch every 5 seconds
+      }, 5000);
     }
+    return () => clearInterval(interval);
   }, [activeTab]);
 
-  const fetchRooms = async () => {
-    setBrowseLoading(true);
+  const fetchRooms = async (silent = false) => {
+    if (!silent) setBrowseLoading(true);
     try {
       const res = await roomsApi.list();
       setRooms(res.data || []);
     } catch (err) {
-      toast.error("Failed to fetch rooms");
+      if (!silent) toast.error("Failed to fetch rooms");
     } finally {
-      setBrowseLoading(false);
+      if (!silent) setBrowseLoading(false);
     }
   };
 
@@ -219,6 +232,7 @@ export default function LobbyPage() {
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomName.trim()) return toast.error("Room name is required");
+    if (isPrivate && !roomPassword.trim()) return toast.error("Şifre gereklidir!");
     
     setCreateLoading(true);
     try {
@@ -533,7 +547,7 @@ export default function LobbyPage() {
 
                     <div className="flex items-center justify-between pt-4 border-t border-border">
                       <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Available Rooms</h3>
-                      <button onClick={fetchRooms} className="text-xs font-bold text-primary hover:underline">Refresh</button>
+                      <button onClick={() => fetchRooms(false)} className="text-xs font-bold text-primary hover:underline">Refresh</button>
                     </div>
 
                     {browseLoading ? (
@@ -541,7 +555,7 @@ export default function LobbyPage() {
                         <Loader2 className="h-8 w-8 animate-spin mb-2" />
                         <p className="text-sm">Fetching rooms...</p>
                       </div>
-                    ) : rooms.length === 0 ? (
+                    ) : rooms.filter(room => (room.status === 'Waiting' || room.status === 'Ready') && room.players?.some(p => p.userId === room.hostId)).length === 0 ? (
                       <div className="text-center py-12 text-muted-foreground">
                         <Users className="h-12 w-12 mx-auto mb-4 opacity-20" />
                         <p className="font-medium">No public rooms found.</p>
@@ -549,14 +563,18 @@ export default function LobbyPage() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto pr-2">
-                        {rooms.map(room => (
-                          <div key={room.id} onClick={() => handleJoinRoom(room)} className="group bg-input hover:bg-card border border-border hover:border-primary/50 rounded-xl p-4 transition-all cursor-pointer flex items-center justify-between">
+                        {rooms.filter(room => (room.status === 'Waiting' || room.status === 'Ready') && room.players?.some(p => p.userId === room.hostId)).map(room => {
+                          const playerCount = room.players?.length || 0;
+                          const isFull = playerCount >= room.maxPlayers;
+                          
+                          return (
+                          <div key={room.id} onClick={() => !isFull && handleJoinRoom(room)} className={`group bg-input border border-border rounded-xl p-4 transition-all flex items-center justify-between ${isFull ? 'opacity-80 cursor-not-allowed' : 'hover:bg-card hover:border-primary/50 cursor-pointer'}`}>
                             <div className="flex items-center gap-4">
-                              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all">
+                              <div className={`h-12 w-12 rounded-lg flex items-center justify-center transition-all ${isFull ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white'}`}>
                                 {room.isPrivate ? <Lock className="h-5 w-5" /> : <Users className="h-5 w-5" />}
                               </div>
                               <div>
-                                <h4 className="font-bold text-foreground group-hover:text-primary transition-colors">{room.name}</h4>
+                                <h4 className={`font-bold transition-colors ${isFull ? 'text-destructive' : 'text-foreground group-hover:text-primary'}`}>{room.name}</h4>
                                 <p className="text-xs text-muted-foreground flex items-center gap-2">
                                   <span>by {room.hostUsername}</span>
                                   <span>•</span>
@@ -566,13 +584,16 @@ export default function LobbyPage() {
                             </div>
                             <div className="flex items-center gap-3">
                               <div className="text-right hidden sm:block">
-                                <p className="text-xs font-bold text-foreground capitalize">{room.difficulty || 'Any'}</p>
-                                <p className="text-[10px] text-muted-foreground">{room.maxPlayers} Players Max</p>
+                                <p className="text-xs font-bold text-foreground capitalize mb-1">{room.difficulty || 'Any'}</p>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <span className={`h-2 w-2 rounded-full ${isFull ? 'bg-destructive animate-pulse' : 'bg-[#3fb950] animate-pulse'}`}></span>
+                                  <p className={`text-[11px] font-bold ${isFull ? 'text-destructive' : 'text-[#3fb950]'}`}>{isFull ? 'Dolu' : 'Katıl'} ({playerCount}/{room.maxPlayers})</p>
+                                </div>
                               </div>
-                              <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                              {!isFull && <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />}
                             </div>
                           </div>
-                        ))}
+                        )})}
                       </div>
                     )}
                   </div>
@@ -767,10 +788,13 @@ export default function LobbyPage() {
             </div>
             <div className="flex gap-2">
               <button 
-                onClick={() => setInviteNotification(null)} 
+                onClick={() => {
+                  signalRService.declineInvite(inviteNotification.senderId, inviteNotification.roomCode);
+                  setInviteNotification(null);
+                }} 
                 className="flex-1 py-2 rounded-xl bg-input text-xs font-bold hover:bg-card border border-border text-muted-foreground transition-all"
               >
-                Kapat
+                Reddet
               </button>
               <button 
                 onClick={async () => {

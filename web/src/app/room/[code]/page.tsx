@@ -75,6 +75,11 @@ export default function RoomPage() {
       await signalRService.inviteFriend(friendId, code);
       setInvitedFriends(prev => [...prev, friendId]);
       toast.success("Davet başarıyla gönderildi!");
+
+      // 15 saniye sonra davet durumunu otomatik sıfırla (Frontend Fallback)
+      setTimeout(() => {
+        setInvitedFriends(prev => prev.filter(id => id !== friendId));
+      }, 15000);
     } catch (e) {
       toast.error("Davet gönderilemedi.");
     }
@@ -178,6 +183,17 @@ export default function RoomPage() {
           toast.info("Bir oyuncu odadan ayrıldı.");
         });
 
+        signalRService.onInviteExpired((data) => {
+          console.log(`[RoomPage] SignalR Event: InviteExpired ->`, data);
+          setInvitedFriends(prev => prev.filter(id => id !== data.friendId));
+        });
+
+        signalRService.onInviteDeclined((data) => {
+          console.log(`[RoomPage] SignalR Event: InviteDeclined ->`, data);
+          setInvitedFriends(prev => prev.filter(id => id !== data.friendId));
+          toast.error(`${data.username} davetinizi reddetti.`);
+        });
+
       } catch (err) {
         console.error(`[RoomPage] Error fetching data or joining SignalR group:`, err);
         toast.error("Room not found or unauthorized");
@@ -200,6 +216,8 @@ export default function RoomPage() {
         conn?.off('MatchFound');
         conn?.off('RoomClosed');
         conn?.off('PlayerLeft');
+        conn?.off('InviteExpired');
+        conn?.off('InviteDeclined');
         signalRService.leaveRoomGroup(code);
       }
     };
@@ -422,6 +440,7 @@ export default function RoomPage() {
                   <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
                     {friends.map((f) => {
                       const isInvited = invitedFriends.includes(f.friendId);
+                      const isInRoom = room?.players.some((p: any) => p.userId === f.friendId) || false;
                       return (
                         <div key={f.friendshipId} className="flex items-center justify-between p-2 bg-input rounded-xl border border-border">
                           <div className="flex items-center gap-2">
@@ -433,13 +452,17 @@ export default function RoomPage() {
                           </div>
                           <button
                             onClick={() => handleInviteFriend(f.friendId)}
-                            disabled={isInvited}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${isInvited
-                                ? 'bg-[#3fb950]/15 text-[#3fb950] border border-[#3fb950]/30'
-                                : 'bg-primary text-white hover:opacity-90 active:scale-95'
+                            disabled={isInvited || isInRoom}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${isInRoom
+                                ? 'bg-muted text-muted-foreground cursor-not-allowed border border-border'
+                                : isInvited
+                                  ? 'bg-[#3fb950]/15 text-[#3fb950] border border-[#3fb950]/30'
+                                  : 'bg-primary text-white hover:opacity-90 active:scale-95'
                               }`}
                           >
-                            {isInvited ? (
+                            {isInRoom ? (
+                              <><Users className="h-3 w-3" /> Odada</>
+                            ) : isInvited ? (
                               <><MailCheck className="h-3 w-3" /> Davet Edildi</>
                             ) : (
                               'Davet Et'

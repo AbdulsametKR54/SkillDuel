@@ -24,6 +24,7 @@ public class RoomsController : ControllerBase
     private readonly ICategoryRepository _categoryRepository;
     private readonly IHubContext<GameHub, IGameHub> _hubContext;
     private readonly SkillDuel.Infrastructure.Data.SkillDuelDbContext _dbContext;
+    private readonly StackExchange.Redis.IConnectionMultiplexer _redis;
 
     public RoomsController(
         IRoomRepository roomRepository,
@@ -31,7 +32,8 @@ public class RoomsController : ControllerBase
         IUserRepository userRepository,
         ICategoryRepository categoryRepository,
         IHubContext<GameHub, IGameHub> hubContext,
-        SkillDuel.Infrastructure.Data.SkillDuelDbContext dbContext)
+        SkillDuel.Infrastructure.Data.SkillDuelDbContext dbContext,
+        StackExchange.Redis.IConnectionMultiplexer redis)
     {
         _roomRepository = roomRepository;
         _unitOfWork = unitOfWork;
@@ -39,6 +41,7 @@ public class RoomsController : ControllerBase
         _categoryRepository = categoryRepository;
         _hubContext = hubContext;
         _dbContext = dbContext;
+        _redis = redis;
     }
 
     [HttpPost]
@@ -153,10 +156,21 @@ public class RoomsController : ControllerBase
 
         if (room.IsPrivate)
         {
-            if (request == null || string.IsNullOrEmpty(request.Password) || !BCrypt.Net.BCrypt.Verify(request.Password, room.Password))
+            var db = _redis.GetDatabase();
+            var isInvited = await db.KeyExistsAsync($"skillduel:invite:{room.Code.ToUpper()}:{userId}");
+            
+            if (!isInvited)
             {
-                Console.WriteLine($"[JoinRoom] Invalid password provided.");
-                return BadRequest(ApiResponse<RoomResponse>.FailureResult("Invalid password."));
+                if (request == null || string.IsNullOrEmpty(request.Password) || string.IsNullOrEmpty(room.Password) || !BCrypt.Net.BCrypt.Verify(request.Password, room.Password))
+                {
+                    Console.WriteLine($"[JoinRoom] Invalid password provided.");
+                    return BadRequest(ApiResponse<RoomResponse>.FailureResult("Invalid password."));
+                }
+            }
+            else
+            {
+                // Consume the invite
+                await db.KeyDeleteAsync($"skillduel:invite:{room.Code.ToUpper()}:{userId}");
             }
         }
 

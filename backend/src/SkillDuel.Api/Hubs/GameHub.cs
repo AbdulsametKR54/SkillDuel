@@ -232,12 +232,39 @@ public async Task JoinMatchmaking(GameMode mode, Guid? categoryId, DifficultyLev
         var user = await _userRepository.GetByIdAsync(userId);
         var senderUsername = user?.Username ?? "Bir oyuncu";
         
+        var db = _redis.GetDatabase();
+        await db.StringSetAsync($"skillduel:invite:{roomCode.ToUpper()}:{friendId}", "true", TimeSpan.FromMinutes(2));
+        
         await Clients.User(friendId.ToString()).FriendInviteReceived(new
         {
             senderId = userId,
             senderUsername = senderUsername,
             roomCode = roomCode
         });
+
+        // 15 saniye sonra davetin expire olup olmadığını kontrol et
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(15000);
+            
+            using var scope = _serviceProvider.CreateScope();
+            var roomRepo = scope.ServiceProvider.GetRequiredService<IRoomRepository>();
+            var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<GameHub, IGameHub>>();
+            
+            var room = await roomRepo.GetByCodeAsync(roomCode.ToUpper());
+            if (room != null && !room.Players.Any(p => p.UserId == friendId))
+            {
+                // Kullanıcı odaya girmemiş, expire event'i gönder
+                await hubContext.Clients.User(userId.ToString()).InviteExpired(new { friendId = friendId, roomCode = roomCode });
+            }
+        });
+    }
+
+    public async Task DeclineInvite(Guid senderId, string roomCode)
+    {
+        var decId = GetUserId();
+        var user = await _userRepository.GetByIdAsync(decId);
+        await Clients.User(senderId.ToString()).InviteDeclined(new { friendId = decId, username = user?.Username, roomCode = roomCode });
     }
 
     public async Task JoinGameGroup(Guid sessionId)

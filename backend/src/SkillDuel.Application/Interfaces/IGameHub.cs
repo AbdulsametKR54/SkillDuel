@@ -16,6 +16,8 @@ public interface IGameHub
     Task RoomGameStarting(Guid sessionId);
     Task EmoteReceived(Guid playerId, string emote);
     Task FriendInviteReceived(object data);
+    Task InviteExpired(object data);
+    Task InviteDeclined(object data);
     Task FriendRequestReceived(string senderUsername);
     Task OpponentDisconnected(object data);
     Task OpponentReconnecting(object data);

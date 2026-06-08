@@ -109,6 +109,14 @@ class SignalRService {
     this.connection?.on('FriendInviteReceived', callback);
   }
 
+  public onInviteExpired(callback: (data: { friendId: string; roomCode: string }) => void) {
+    this.connection?.on('InviteExpired', callback);
+  }
+
+  public onInviteDeclined(callback: (data: { friendId: string; username: string; roomCode: string }) => void) {
+    this.connection?.on('InviteDeclined', callback);
+  }
+
   public onFriendRequestReceived(callback: (senderUsername: string) => void) {
     this.connection?.on('FriendRequestReceived', callback);
   }
@@ -144,6 +152,11 @@ class SignalRService {
     await this.connection?.invoke('InviteFriend', friendId, roomCode);
   }
 
+  public async declineInvite(senderId: string, roomCode: string) {
+    await this.ensureConnected();
+    await this.connection?.invoke('DeclineInvite', senderId, roomCode);
+  }
+
   public removeHandlers() {
     this.connection?.off('MatchFound');
     this.connection?.off('RoundStarted');
@@ -157,6 +170,8 @@ class SignalRService {
     this.connection?.off('RoomGameStarting');
     this.connection?.off('EmoteReceived');
     this.connection?.off('FriendInviteReceived');
+    this.connection?.off('InviteExpired');
+    this.connection?.off('InviteDeclined');
     this.connection?.off('FriendRequestReceived');
   }
 

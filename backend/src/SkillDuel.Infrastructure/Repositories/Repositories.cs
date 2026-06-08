@@ -191,7 +191,7 @@ public class RoomRepository : GenericRepository<Room>, IRoomRepository
             .Include(r => r.Host)
             .Include(r => r.Category)
             .Include(r => r.Players).ThenInclude(p => p.User)
-            .Where(r => r.Status == RoomStatus.Waiting && !r.IsPrivate && r.ExpiresAt > DateTime.UtcNow)
+            .Where(r => (r.Status == RoomStatus.Waiting || r.Status == RoomStatus.Ready) && r.ExpiresAt > DateTime.UtcNow)
             .OrderByDescending(r => r.CreatedAt)
             .ToListAsync();
     }
