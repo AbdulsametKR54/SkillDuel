@@ -100,13 +100,25 @@ public class RoomsController : ControllerBase
 
 
     [HttpGet]
-    public async Task<IActionResult> GetRooms()
+    public async Task<IActionResult> GetRooms([FromQuery] RoomSearchRequest request)
     {
-        var publicRooms = await _roomRepository.GetPublicWaitingRoomsAsync();
-        Console.WriteLine($"[GetRooms] Public rooms count: {publicRooms.Count}");
-        var response = publicRooms.Select(r => MapToResponse(r)).ToList();
+        var (items, totalCount) = await _roomRepository.GetPublicWaitingRoomsAsync(
+            page: request.Page,
+            pageSize: request.PageSize,
+            searchName: request.SearchName,
+            categoryId: request.CategoryId,
+            roundCount: request.RoundCount
+        );
         
-        return Ok(ApiResponse<List<RoomResponse>>.SuccessResult(response));
+        var responseItems = items.Select(r => MapToResponse(r)).ToList();
+        
+        var response = new PaginatedRoomResponse
+        {
+            TotalCount = totalCount,
+            Items = responseItems
+        };
+        
+        return Ok(ApiResponse<PaginatedRoomResponse>.SuccessResult(response));
     }
 
 
@@ -176,7 +188,17 @@ public class RoomsController : ControllerBase
 
         Console.WriteLine($"[JoinRoom] All checks passed. Updating room for player {userId}");
         
-        var nextSlot = room.Players.Max(p => p.SlotNumber) + 1;
+        var occupiedSlots = room.Players.Select(p => p.SlotNumber).ToHashSet();
+        int nextSlot = 1;
+        for (int i = 1; i <= room.MaxPlayers; i++)
+        {
+            if (!occupiedSlots.Contains(i))
+            {
+                nextSlot = i;
+                break;
+            }
+        }
+
         var newPlayer = new RoomPlayer
         {
             RoomId = room.Id,
@@ -253,6 +275,109 @@ public class RoomsController : ControllerBase
         return Ok(ApiResponse.SuccessResult());
     }
 
+    [HttpPost("{code}/kick/{targetUserId}")]
+    public async Task<IActionResult> KickUser(string code, Guid targetUserId)
+    {
+        var userId = GetUserId();
+        var room = await _roomRepository.GetByCodeAsync(code.ToUpper());
+        if (room == null) return NotFound(ApiResponse.FailureResult("Room not found."));
+
+        var db = _redis.GetDatabase();
+        var adminStr = await db.StringGetAsync($"skillduel:room:{room.Code.ToUpper()}:admin");
+        var currentAdminId = adminStr.HasValue ? Guid.Parse(adminStr.ToString()) : room.HostId;
+
+        if (currentAdminId != userId) return Forbid();
+
+        var player = room.Players.FirstOrDefault(p => p.UserId == targetUserId);
+        if (player == null) return NotFound(ApiResponse.FailureResult("Player not found in room."));
+
+        room.Players.Remove(player);
+        _dbContext.RoomPlayers.Remove(player);
+        
+        if (room.GuestId == targetUserId)
+        {
+            room.GuestId = null;
+        }
+
+        if (room.Players.Count < room.MaxPlayers && room.Status == RoomStatus.Ready)
+        {
+            room.Status = RoomStatus.Waiting;
+        }
+
+        // Seçenek B: Geçici admin ana kurucuyu (host) atarsa, mülkiyet admine kalıcı olarak geçer.
+        if (targetUserId == room.HostId)
+        {
+            room.HostId = currentAdminId;
+            await db.KeyDeleteAsync($"skillduel:room:{room.Code.ToUpper()}:admin");
+            // Notify clients of the permanent host change so UI re-evaluates
+            await _hubContext.Clients.Group(room.Code.ToUpper()).HostChanged(currentAdminId);
+        }
+
+        await _unitOfWork.SaveChangesAsync();
+
+        await _hubContext.Clients.User(targetUserId.ToString()).KickedFromRoom();
+        await _hubContext.Clients.Group(room.Code.ToUpper()).PlayerLeft(new { userId = targetUserId });
+
+        return Ok(ApiResponse.SuccessResult());
+    }
+
+    [HttpPut("{code}/settings")]
+    public async Task<IActionResult> UpdateSettings(string code, [FromBody] UpdateRoomSettingsRequest request)
+    {
+        var userId = GetUserId();
+        var room = await _roomRepository.GetByCodeAsync(code.ToUpper());
+        if (room == null) return NotFound(ApiResponse.FailureResult("Room not found."));
+
+        var db = _redis.GetDatabase();
+        var adminStr = await db.StringGetAsync($"skillduel:room:{room.Code.ToUpper()}:admin");
+        var currentAdminId = adminStr.HasValue ? Guid.Parse(adminStr.ToString()) : room.HostId;
+
+        if (currentAdminId != userId) return Forbid();
+
+        room.CategoryId = request.CategoryId;
+        room.Difficulty = request.Difficulty;
+        room.QuestionType = request.QuestionType;
+        room.RoundCount = request.RoundCount;
+
+        await _unitOfWork.SaveChangesAsync();
+
+        var settings = new
+        {
+            categoryId = room.CategoryId,
+            difficulty = room.Difficulty,
+            questionType = room.QuestionType,
+            roundCount = room.RoundCount
+        };
+
+        await _hubContext.Clients.Group(room.Code.ToUpper()).RoomSettingsUpdated(settings);
+
+        return Ok(ApiResponse.SuccessResult());
+    }
+
+    [HttpPost("{code}/delegate-admin/{targetUserId}")]
+    public async Task<IActionResult> DelegateAdmin(string code, Guid targetUserId)
+    {
+        var userId = GetUserId();
+        var room = await _roomRepository.GetByCodeAsync(code.ToUpper());
+        if (room == null) return NotFound(ApiResponse.FailureResult("Room not found."));
+
+        var db = _redis.GetDatabase();
+        var adminKey = $"skillduel:room:{room.Code.ToUpper()}:admin";
+        var adminStr = await db.StringGetAsync(adminKey);
+        var currentAdminId = adminStr.HasValue ? Guid.Parse(adminStr.ToString()) : room.HostId;
+
+        if (currentAdminId != userId) return Forbid();
+
+        var player = room.Players.FirstOrDefault(p => p.UserId == targetUserId);
+        if (player == null) return NotFound(ApiResponse.FailureResult("Target user not in room."));
+
+        await db.StringSetAsync(adminKey, targetUserId.ToString(), TimeSpan.FromHours(1));
+
+        await _hubContext.Clients.Group(room.Code.ToUpper()).HostChanged(targetUserId);
+
+        return Ok(ApiResponse.SuccessResult());
+    }
+
 
     private Guid GetUserId()
     {
@@ -285,7 +410,10 @@ public class RoomsController : ControllerBase
                 UserId = p.UserId,
                 Username = p.User?.Username ?? (p.UserId == room.HostId ? room.Host?.Username : room.Guest?.Username) ?? "Unknown",
                 SlotNumber = p.SlotNumber
-            }).OrderBy(p => p.SlotNumber).ToList()
+            }).OrderBy(p => p.SlotNumber).ToList(),
+            CurrentAdminId = _redis.GetDatabase().StringGet($"skillduel:room:{room.Code.ToUpper()}:admin").HasValue 
+                ? Guid.Parse(_redis.GetDatabase().StringGet($"skillduel:room:{room.Code.ToUpper()}:admin").ToString()) 
+                : room.HostId
         };
     }
 }

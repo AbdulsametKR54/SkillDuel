@@ -33,6 +33,7 @@ public class RoomResponse
     public string Status { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public List<RoomPlayerResponse> Players { get; set; } = new();
+    public Guid CurrentAdminId { get; set; }
 }
 
 public class RoomPlayerResponse
@@ -45,4 +46,27 @@ public class RoomPlayerResponse
 public class JoinRoomRequest
 {
     public string? Password { get; set; }
+}
+
+public class UpdateRoomSettingsRequest
+{
+    public Guid? CategoryId { get; set; }
+    public string? Difficulty { get; set; }
+    public string? QuestionType { get; set; }
+    public int RoundCount { get; set; }
+}
+
+public class RoomSearchRequest
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 10;
+    public string? SearchName { get; set; }
+    public Guid? CategoryId { get; set; }
+    public int? RoundCount { get; set; }
+}
+
+public class PaginatedRoomResponse
+{
+    public int TotalCount { get; set; }
+    public List<RoomResponse> Items { get; set; } = new();
 }

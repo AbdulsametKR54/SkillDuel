@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { roomsApi, usersApi, friendsApi } from '@/lib/api';
+import { roomsApi, usersApi, friendsApi, categoriesApi } from '@/lib/api';
 import signalRService from '@/lib/signalr';
 import { useGameStore } from '@/lib/store';
 import { useCallback } from 'react';
@@ -25,6 +25,7 @@ interface RoomDetails {
   status: string;
   createdAt: string;
   players: { userId: string; username: string; slotNumber: number }[];
+  currentAdminId: string;
 }
 
 interface Message {
@@ -42,6 +43,9 @@ export default function RoomPage() {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [startingGame, setStartingGame] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsForm, setSettingsForm] = useState({ categoryId: '', difficulty: '', questionType: '', roundCount: 5 });
+  const [categories, setCategories] = useState<any[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const setGameStatus = useGameStore(state => state.setGameStatus);
@@ -87,6 +91,7 @@ export default function RoomPage() {
 
   useEffect(() => {
     fetchFriends();
+    categoriesApi.list().then((res: any) => setCategories(res.data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -194,6 +199,31 @@ export default function RoomPage() {
           toast.error(`${data.username} davetinizi reddetti.`);
         });
 
+        conn?.on('KickedFromRoom', () => {
+          toast.error("Odadan atıldınız!");
+          router.push('/lobby');
+        });
+
+        conn?.on('RoomSettingsUpdated', async (data: any) => {
+          toast.info("Oda ayarları güncellendi.");
+          try {
+            const rRes = await roomsApi.get(code);
+            setRoom(rRes.data);
+          } catch (e) {
+            console.error("Failed to fetch room on settings update", e);
+          }
+        });
+
+        conn?.on('HostChanged', async (newAdminId: string) => {
+          toast.info("Oda yöneticisi değişti.");
+          try {
+            const rRes = await roomsApi.get(code);
+            setRoom(rRes.data);
+          } catch (e) {
+            console.error("Failed to fetch room on host change", e);
+          }
+        });
+
       } catch (err) {
         console.error(`[RoomPage] Error fetching data or joining SignalR group:`, err);
         toast.error("Room not found or unauthorized");
@@ -218,6 +248,9 @@ export default function RoomPage() {
         conn?.off('PlayerLeft');
         conn?.off('InviteExpired');
         conn?.off('InviteDeclined');
+        conn?.off('KickedFromRoom');
+        conn?.off('RoomSettingsUpdated');
+        conn?.off('HostChanged');
         signalRService.leaveRoomGroup(code);
       }
     };
@@ -281,11 +314,44 @@ export default function RoomPage() {
     toast.success("Room link copied!");
   }, []);
 
+  const currentAdminId = room?.currentAdminId || room?.hostId;
+  const isAdmin = currentAdminId === me?.id;
   const isHost = room?.players?.find(p => p.slotNumber === 1)?.userId === me?.id;
+
+  const handleKick = async (targetId: string) => {
+    if (!confirm("Bu oyuncuyu odadan atmak istediğinize emin misiniz?")) return;
+    try {
+      await roomsApi.kick(code, targetId);
+      toast.success("Oyuncu atıldı");
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || "Oyuncu atılamadı");
+    }
+  };
+
+  const handleDelegateAdmin = async (targetId: string) => {
+    if (!confirm("Admin yetkisini bu oyuncuya devretmek istediğinize emin misiniz?")) return;
+    try {
+      await roomsApi.delegateAdmin(code, targetId);
+      toast.success("Admin yetkisi devredildi");
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || "Yetki devredilemedi");
+    }
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await roomsApi.updateSettings(code, settingsForm);
+      toast.success("Ayarlar kaydedildi");
+      setIsSettingsOpen(false);
+    } catch (e: any) {
+      toast.error("Ayarlar güncellenemedi");
+    }
+  };
 
   const handleLeaveRoom = useCallback(async () => {
     try {
-      if (isHost) {
+      if (isAdmin && room?.players?.length === 1) { // Only delete if last player
         await roomsApi.delete(code);
       } else {
         await roomsApi.leave(code);
@@ -294,14 +360,14 @@ export default function RoomPage() {
       console.error("Failed to leave/delete room", err);
     }
     router.push('/lobby');
-  }, [isHost, code, router]);
+  }, [isAdmin, room?.players?.length, code, router]);
 
   if (loading) return <div className="flex items-center justify-center min-h-screen bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   if (!room) return null;
 
   const isJoined = room.players?.some(p => p.userId === me?.id) || false;
   const notJoined = !isJoined;
-  const canStart = isHost && room.players?.length === room.maxPlayers;
+  const canStart = isAdmin && room.players?.length === room.maxPlayers;
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -335,21 +401,32 @@ export default function RoomPage() {
               const slotNumber = idx + 1;
               const player = room.players?.find(p => p.slotNumber === slotNumber);
               const isSlotHost = slotNumber === 1;
+              const isSlotAdmin = player?.userId === currentAdminId;
 
               return (
-                <div key={idx} className={`bg-card border-2 ${isSlotHost ? 'border-primary/20' : player ? 'border-primary/20' : 'border-dashed border-border'} rounded-2xl p-6 flex flex-col items-center justify-center space-y-4 transition-all`}>
+                <div key={idx} className={`bg-card border-2 ${isSlotAdmin ? 'border-primary/20' : player ? 'border-primary/20' : 'border-dashed border-border'} rounded-2xl p-6 flex flex-col items-center justify-center space-y-2 transition-all`}>
                   {player ? (
                     <>
                       <div className="relative">
-                        <div className={`w-20 h-20 ${isSlotHost ? 'bg-primary/10 border-primary' : 'bg-primary/10 border-primary/50'} rounded-full flex items-center justify-center border-2`}>
+                        <div className={`w-20 h-20 ${isSlotAdmin ? 'bg-primary/10 border-primary' : 'bg-primary/10 border-primary/50'} rounded-full flex items-center justify-center border-2`}>
                           <UserIcon className="h-10 w-10 text-primary" />
                         </div>
-                        {isSlotHost && <div className="absolute -top-1 -right-1 bg-primary text-white p-1 rounded-full"><Shield className="h-3 w-3" /></div>}
+                        {isSlotAdmin && <div className="absolute -top-1 -right-1 bg-primary text-white p-1 rounded-full"><Shield className="h-3 w-3" /></div>}
                       </div>
-                      <div className="text-center">
-                        <p className="font-black text-xl">{player.username}</p>
-                        <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest">{isSlotHost ? 'HOST' : `GUEST ${slotNumber - 1}`}</p>
+                      <div className="text-center mt-3">
+                        <p className="font-black text-lg truncate w-full px-2">{player.username}</p>
+                        <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest">{isSlotAdmin ? 'ADMIN' : (isSlotHost ? 'HOST' : `GUEST ${slotNumber - 1}`)}</p>
                       </div>
+                      {isAdmin && player.userId !== me?.id && (
+                        <div className="flex gap-2 mt-3 w-full justify-center">
+                          <button onClick={() => handleDelegateAdmin(player.userId)} className="text-[10px] uppercase font-bold px-2 py-1 bg-primary/20 text-primary rounded hover:bg-primary hover:text-white transition-colors" title="Admin Yap">
+                            Admin Yap
+                          </button>
+                          <button onClick={() => handleKick(player.userId)} className="text-[10px] uppercase font-bold px-2 py-1 bg-red-500/20 text-red-500 rounded hover:bg-red-500 hover:text-white transition-colors" title="Oyuncuyu At">
+                            At
+                          </button>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <>
@@ -371,7 +448,25 @@ export default function RoomPage() {
             {/* Game Settings Summary */}
             <div className="bg-card border border-border rounded-2xl p-6 flex flex-col justify-between">
               <div>
-                <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground mb-4">Game Settings</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground">Game Settings</h3>
+                  {isAdmin && (
+                    <button 
+                      onClick={() => {
+                        setSettingsForm({
+                          categoryId: room.categoryId || '',
+                          difficulty: room.difficulty || '',
+                          questionType: room.questionType || '',
+                          roundCount: room.roundCount || 5
+                        });
+                        setIsSettingsOpen(true);
+                      }}
+                      className="text-xs font-bold text-primary hover:underline"
+                    >
+                      Düzenle
+                    </button>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-input p-3 rounded-xl">
                     <p className="text-[10px] uppercase font-black text-muted-foreground mb-1">Rounds</p>
@@ -401,7 +496,7 @@ export default function RoomPage() {
                     <Swords className="h-5 w-5" />
                     JOIN ROOM
                   </button>
-                ) : isHost ? (
+                ) : isAdmin ? (
                   <button
                     onClick={handleStartGame}
                     disabled={!canStart || startingGame}
@@ -518,6 +613,77 @@ export default function RoomPage() {
           </form>
         </div>
       </main>
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-card border border-border rounded-3xl w-full max-w-md shadow-2xl overflow-hidden scale-in duration-300">
+            <div className="p-6 border-b border-border flex items-center justify-between">
+              <h3 className="text-xl font-bold">Oyun Ayarları</h3>
+              <button onClick={() => setIsSettingsOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
+            </div>
+            <form onSubmit={handleSaveSettings} className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Kategori</label>
+                <select 
+                  value={settingsForm.categoryId} 
+                  onChange={e => setSettingsForm({ ...settingsForm, categoryId: e.target.value })}
+                  className="w-full h-12 bg-input border border-border rounded-xl px-4 text-sm font-bold text-foreground outline-none focus:border-primary/50 transition-colors"
+                >
+                  <option value="">Tüm Kategoriler (Karışık)</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Zorluk Seviyesi</label>
+                <select 
+                  value={settingsForm.difficulty} 
+                  onChange={e => setSettingsForm({ ...settingsForm, difficulty: e.target.value })}
+                  className="w-full h-12 bg-input border border-border rounded-xl px-4 text-sm font-bold text-foreground outline-none focus:border-primary/50 transition-colors"
+                >
+                  <option value="">Fark Etmez</option>
+                  <option value="easy">Kolay</option>
+                  <option value="medium">Orta</option>
+                  <option value="hard">Zor</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Soru Türü</label>
+                <select 
+                  value={settingsForm.questionType} 
+                  onChange={e => setSettingsForm({ ...settingsForm, questionType: e.target.value })}
+                  className="w-full h-12 bg-input border border-border rounded-xl px-4 text-sm font-bold text-foreground outline-none focus:border-primary/50 transition-colors"
+                >
+                  <option value="">Fark Etmez</option>
+                  <option value="multiple_choice">Çoktan Seçmeli</option>
+                  <option value="true_false">Doğru / Yanlış</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Tur Sayısı</label>
+                <select 
+                  value={settingsForm.roundCount} 
+                  onChange={e => setSettingsForm({ ...settingsForm, roundCount: parseInt(e.target.value) })}
+                  className="w-full h-12 bg-input border border-border rounded-xl px-4 text-sm font-bold text-foreground outline-none focus:border-primary/50 transition-colors"
+                >
+                  <option value={3}>3 Tur</option>
+                  <option value={5}>5 Tur</option>
+                  <option value={7}>7 Tur</option>
+                  <option value={10}>10 Tur</option>
+                </select>
+              </div>
+              
+              <div className="flex gap-3 pt-4 border-t border-border mt-6">
+                <button type="button" onClick={() => setIsSettingsOpen(false)} className="flex-1 h-12 rounded-xl bg-input font-bold hover:bg-card transition-all">İptal</button>
+                <button type="submit" className="flex-1 h-12 rounded-xl bg-primary text-white font-bold hover:opacity-90 transition-all">Kaydet</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

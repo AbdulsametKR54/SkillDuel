@@ -76,9 +76,18 @@ public class GameHub : Hub<IGameHub>
         var userId = GetUserId();
         var room = await _roomRepository.GetByCodeAsync(roomCode.ToUpper());
 
-        if (room == null || room.HostId != userId)
+        if (room == null)
         {
-            throw new HubException("Only host can start the game.");
+            throw new HubException("Room not found.");
+        }
+
+        var db = _redis.GetDatabase();
+        var adminStr = await db.StringGetAsync($"skillduel:room:{room.Code.ToUpper()}:admin");
+        var currentAdminId = adminStr.HasValue ? Guid.Parse(adminStr.ToString()) : room.HostId;
+
+        if (currentAdminId != userId)
+        {
+            throw new HubException("Only the admin can start the game.");
         }
 
         if (room.Players.Count < 2)
@@ -91,7 +100,6 @@ public class GameHub : Hub<IGameHub>
             return; // Already started
         }
 
-        var db = _redis.GetDatabase();
         string lockKey = $"room:starting:{roomCode.ToUpper()}";
         if (!await db.StringSetAsync(lockKey, "1", TimeSpan.FromSeconds(10), When.NotExists))
         {

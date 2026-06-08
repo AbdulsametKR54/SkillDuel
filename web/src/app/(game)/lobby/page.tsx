@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
 import { useMatchmaking } from '@/hooks/useMatchmaking';
@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 
 interface UserProfile { id: string; username: string; email: string; eloRating: number; totalWins: number; totalLosses: number; totalGames: number; role?: string; }
 interface Category { id: string; name: string; }
-interface Room { id: string; code: string; name: string; hostId: string; hostUsername: string; categoryName?: string; difficulty?: string; maxPlayers: number; isPrivate: boolean; status: string; players?: any[]; }
+interface Room { id: string; code: string; name: string; hostId: string; hostUsername: string; categoryName?: string; difficulty?: string; maxPlayers: number; isPrivate: boolean; status: string; players?: any[]; roundCount?: number; }
 
 const selectCls = 'w-full h-12 px-4 rounded-xl bg-input border border-border text-foreground text-sm outline-none appearance-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 font-medium';
 const chevron = <svg className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
@@ -44,6 +44,17 @@ export default function LobbyPage() {
   // Browse Rooms State
   const [rooms, setRooms] = useState<Room[]>([]);
   const [browseLoading, setBrowseLoading] = useState(false);
+  const [browsePage, setBrowsePage] = useState(1);
+  const [browseTotalPages, setBrowseTotalPages] = useState(1);
+  const [browseSearch, setBrowseSearch] = useState('');
+  const [browseCategory, setBrowseCategory] = useState<string>('any');
+  const [browseRounds, setBrowseRounds] = useState<number | 'any'>('any');
+
+  const browseParamsRef = useRef({ page: 1, searchName: '', categoryId: 'any', roundCount: 'any' as number | 'any' });
+  
+  useEffect(() => {
+    browseParamsRef.current = { page: browsePage, searchName: browseSearch, categoryId: browseCategory, roundCount: browseRounds };
+  }, [browsePage, browseSearch, browseCategory, browseRounds]);
   const [joiningRoom, setJoiningRoom] = useState<Room | null>(null);
   const [joinPassword, setJoinPassword] = useState('');
   
@@ -209,14 +220,31 @@ export default function LobbyPage() {
   const fetchRooms = async (silent = false) => {
     if (!silent) setBrowseLoading(true);
     try {
-      const res = await roomsApi.list();
-      setRooms(res.data || []);
+      const p = browseParamsRef.current;
+      const res = await roomsApi.list({
+        page: p.page,
+        pageSize: 10,
+        searchName: p.searchName || undefined,
+        categoryId: p.categoryId === 'any' ? undefined : p.categoryId,
+        roundCount: p.roundCount === 'any' ? undefined : p.roundCount
+      });
+      setRooms(res.data?.items || []);
+      setBrowseTotalPages(Math.ceil((res.data?.totalCount || 0) / 10) || 1);
     } catch (err) {
       if (!silent) toast.error("Failed to fetch rooms");
     } finally {
       if (!silent) setBrowseLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 'browse') {
+      fetchRooms(false);
+    }
+  }, [browsePage, browseCategory, browseRounds]); // Trigger on filter/page change
+
+  // Optionally trigger search on typing with delay, or user presses enter. Let's do it on a simple button or blur.
+  // Actually, we can just trigger it when they press the search button or just on debounced search. Let's just fetch when they press Enter or we can add a search button.
 
   const handleLogout = () => { Cookies.remove('token'); Cookies.remove('refreshToken'); router.push('/login'); };
   
@@ -545,9 +573,41 @@ export default function LobbyPage() {
                       </div>
                     </form>
 
-                    <div className="flex items-center justify-between pt-4 border-t border-border">
-                      <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Available Rooms</h3>
-                      <button onClick={() => fetchRooms(false)} className="text-xs font-bold text-primary hover:underline">Refresh</button>
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-4 pt-4 border-t border-border">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-primary/20 p-2 rounded-xl text-primary"><Search className="h-5 w-5" /></div>
+                        <h2 className="text-xl font-black">Public Rooms</h2>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="text" 
+                          placeholder="Oda Adı Ara..." 
+                          className="h-9 px-3 rounded-lg bg-input border border-border text-sm outline-none"
+                          value={browseSearch}
+                          onChange={(e) => setBrowseSearch(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && fetchRooms(false)}
+                        />
+                        <select 
+                          className="h-9 px-3 rounded-lg bg-input border border-border text-sm outline-none"
+                          value={browseCategory}
+                          onChange={(e) => { setBrowseCategory(e.target.value); setBrowsePage(1); }}
+                        >
+                          <option value="any">Tüm Kategoriler</option>
+                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <select 
+                          className="h-9 px-3 rounded-lg bg-input border border-border text-sm outline-none"
+                          value={browseRounds}
+                          onChange={(e) => { setBrowseRounds(e.target.value === 'any' ? 'any' : parseInt(e.target.value)); setBrowsePage(1); }}
+                        >
+                          <option value="any">Tur Sayısı</option>
+                          <option value={3}>3 Tur</option>
+                          <option value={5}>5 Tur</option>
+                          <option value={7}>7 Tur</option>
+                          <option value={10}>10 Tur</option>
+                        </select>
+                        <button onClick={() => fetchRooms(false)} className="h-9 px-3 bg-primary text-white text-xs font-bold rounded-lg hover:opacity-90">Bul</button>
+                      </div>
                     </div>
 
                     {browseLoading ? (
@@ -579,6 +639,8 @@ export default function LobbyPage() {
                                   <span>by {room.hostUsername}</span>
                                   <span>•</span>
                                   <span>{room.categoryName || 'All Categories'}</span>
+                                  <span>•</span>
+                                  <span>{room.roundCount || 5} Tur</span>
                                 </p>
                               </div>
                             </div>
@@ -594,6 +656,27 @@ export default function LobbyPage() {
                             </div>
                           </div>
                         )})}
+                      </div>
+                    )}
+                    
+                    {/* Pagination */}
+                    {browseTotalPages > 1 && (
+                      <div className="flex items-center justify-center gap-4 mt-6">
+                        <button 
+                          onClick={() => setBrowsePage(p => Math.max(1, p - 1))}
+                          disabled={browsePage === 1}
+                          className="px-4 py-2 bg-input border border-border rounded-lg text-sm font-bold disabled:opacity-50"
+                        >
+                          Önceki
+                        </button>
+                        <span className="text-sm font-bold">{browsePage} / {browseTotalPages}</span>
+                        <button 
+                          onClick={() => setBrowsePage(p => Math.min(browseTotalPages, p + 1))}
+                          disabled={browsePage === browseTotalPages}
+                          className="px-4 py-2 bg-input border border-border rounded-lg text-sm font-bold disabled:opacity-50"
+                        >
+                          Sonraki
+                        </button>
                       </div>
                     )}
                   </div>

@@ -104,12 +104,15 @@ export const gameApi = {
 };
 
 export const roomsApi = {
-  list: () => api.get('/api/Rooms').then(r => r.data),
+  list: (params?: { page?: number; pageSize?: number; searchName?: string; categoryId?: string; roundCount?: number }) => api.get('/api/Rooms', { params }).then(r => r.data),
   get: (code: string) => api.get(`/api/Rooms/${code}`).then(r => r.data),
   create: (data: any) => api.post('/api/Rooms', data).then(r => r.data),
   join: (code: string, data: any) => api.post(`/api/Rooms/${code}/join`, data).then(r => r.data),
   delete: (code: string) => api.delete(`/api/Rooms/${code}`).then(r => r.data),
   leave: (code: string) => api.post(`/api/Rooms/${code}/leave`).then(r => r.data),
+  kick: (code: string, userId: string) => api.post(`/api/Rooms/${code}/kick/${userId}`).then(r => r.data),
+  updateSettings: (code: string, data: any) => api.put(`/api/Rooms/${code}/settings`, data).then(r => r.data),
+  delegateAdmin: (code: string, userId: string) => api.post(`/api/Rooms/${code}/delegate-admin/${userId}`).then(r => r.data),
 };
 
 

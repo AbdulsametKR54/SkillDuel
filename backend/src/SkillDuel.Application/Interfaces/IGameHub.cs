@@ -24,5 +24,8 @@ public interface IGameHub
     Task OpponentReconnected(object data);
     Task RoomClosed();
     Task PlayerLeft(object data);
+    Task KickedFromRoom();
+    Task RoomSettingsUpdated(object data);
+    Task HostChanged(Guid newAdminId);
 }
 

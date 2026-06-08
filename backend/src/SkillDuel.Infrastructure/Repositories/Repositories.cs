@@ -185,15 +185,32 @@ public class RoomRepository : GenericRepository<Room>, IRoomRepository
             .FirstOrDefaultAsync(r => r.Code == code);
     }
 
-    public async Task<List<Room>> GetPublicWaitingRoomsAsync()
+    public async Task<(List<Room> Items, int TotalCount)> GetPublicWaitingRoomsAsync(int page = 1, int pageSize = 10, string? searchName = null, Guid? categoryId = null, int? roundCount = null)
     {
-        return await _dbSet
+        var query = _dbSet
             .Include(r => r.Host)
             .Include(r => r.Category)
             .Include(r => r.Players).ThenInclude(p => p.User)
-            .Where(r => (r.Status == RoomStatus.Waiting || r.Status == RoomStatus.Ready) && r.ExpiresAt > DateTime.UtcNow)
+            .Where(r => (r.Status == RoomStatus.Waiting || r.Status == RoomStatus.Ready) && r.ExpiresAt > DateTime.UtcNow);
+
+        if (!string.IsNullOrEmpty(searchName))
+            query = query.Where(r => r.Name.Contains(searchName));
+
+        if (categoryId.HasValue)
+            query = query.Where(r => r.CategoryId == categoryId.Value);
+
+        if (roundCount.HasValue)
+            query = query.Where(r => r.RoundCount == roundCount.Value);
+
+        int totalCount = await query.CountAsync();
+
+        var items = await query
             .OrderByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
+
+        return (items, totalCount);
     }
 
     public async Task<Room?> GetActiveRoomByUserIdAsync(Guid userId)

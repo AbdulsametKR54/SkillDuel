@@ -28,7 +28,7 @@ public interface IPlayerAnswerRepository : IGenericRepository<PlayerAnswer> { }
 public interface IRoomRepository : IGenericRepository<Room> 
 {
     Task<Room?> GetByCodeAsync(string code);
-    Task<List<Room>> GetPublicWaitingRoomsAsync();
+    Task<(List<Room> Items, int TotalCount)> GetPublicWaitingRoomsAsync(int page = 1, int pageSize = 10, string? searchName = null, Guid? categoryId = null, int? roundCount = null);
     Task<Room?> GetActiveRoomByUserIdAsync(Guid userId);
 }
 public interface IUserCategoryStatRepository : IGenericRepository<UserCategoryStat>
