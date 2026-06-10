@@ -35,7 +35,7 @@ public class AuthController : ControllerBase
         var result = await _authService.LoginAsync(request, cancellationToken);
         if (!result.Success)
         {
-            if (result.Error == "Your account has been banned")
+            if (result.Error?.Contains("yasaklandı") == true)
             {
                 return StatusCode(403, result);
             }

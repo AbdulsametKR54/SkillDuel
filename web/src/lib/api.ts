@@ -90,6 +90,13 @@ export const adminApi = {
   banUser: (id: string) => api.put(`/api/admin/users/${id}/ban`).then(r => r.data),
   unbanUser: (id: string) => api.put(`/api/admin/users/${id}/unban`).then(r => r.data),
   updateUserRole: (id: string, role: string) => api.put(`/api/admin/users/${id}/role`, { role }).then(r => r.data),
+  getReports: () => api.get('/api/admin/bans/reports').then(r => r.data),
+  banUserWithDuration: (data: { userId: string, duration: string }) => api.post('/api/admin/bans/ban', data).then(r => r.data),
+  resolveReport: (id: string) => api.post(`/api/admin/bans/reports/${id}/resolve`).then(r => r.data),
+};
+
+export const reportsApi = {
+  create: (data: { reportedUserId: string, reason: string, chatMessage?: string }) => api.post('/api/Reports', data).then(r => r.data),
 };
 
 export const categoriesApi = {

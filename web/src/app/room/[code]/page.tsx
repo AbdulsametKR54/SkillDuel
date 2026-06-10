@@ -8,6 +8,8 @@ import { useGameStore } from '@/lib/store';
 import { useCallback } from 'react';
 import { Loader2, Send, User as UserIcon, Shield, Copy, Share2, LogOut, Swords, MessageSquare, Users, MailCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportsApi } from '@/lib/api';
+import { AlertTriangle } from 'lucide-react';
 
 interface RoomDetails {
   id: string;
@@ -47,6 +49,10 @@ export default function RoomPage() {
   const [settingsForm, setSettingsForm] = useState({ categoryId: '', difficulty: '', questionType: '', roundCount: 5 });
   const [categories, setCategories] = useState<any[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ id: string, username: string, message?: string } | null>(null);
+  const [reportReason, setReportReason] = useState('');
 
   const setGameStatus = useGameStore(state => state.setGameStatus);
   const setSessionId = useGameStore(state => state.setSessionId);
@@ -362,6 +368,29 @@ export default function RoomPage() {
     router.push('/lobby');
   }, [isAdmin, room?.players?.length, code, router]);
 
+  const handleOpenReport = (id: string, username: string, message?: string) => {
+    if (id === me?.id) return; // Can't report self
+    setReportTarget({ id, username, message });
+    setReportReason('');
+    setIsReportModalOpen(true);
+  };
+
+  const submitReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportTarget || !reportReason) return;
+    try {
+      await reportsApi.create({
+        reportedUserId: reportTarget.id,
+        reason: reportReason,
+        chatMessage: reportTarget.message
+      });
+      toast.success('Rapor başarıyla gönderildi.');
+      setIsReportModalOpen(false);
+    } catch (err) {
+      toast.error('Rapor gönderilemedi.');
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center min-h-screen bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   if (!room) return null;
 
@@ -426,6 +455,11 @@ export default function RoomPage() {
                             At
                           </button>
                         </div>
+                      )}
+                      {player.userId !== me?.id && (
+                        <button onClick={() => handleOpenReport(player.userId, player.username)} className="absolute top-2 right-2 p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors" title="Kullanıcıyı Şikayet Et">
+                          <AlertTriangle className="h-4 w-4" />
+                        </button>
                       )}
                     </>
                   ) : (
@@ -586,17 +620,30 @@ export default function RoomPage() {
             {messages.length === 0 && (
               <p className="text-center text-muted-foreground text-xs italic mt-4">Welcome to the chat! Be respectful.</p>
             )}
-            {messages.map((msg, i) => (
+            {messages.map((msg, i) => {
+              const msgPlayer = room.players?.find(p => p.username === msg.username);
+              return (
               <div key={i} className={`flex flex-col ${msg.username === me?.username ? 'items-end' : 'items-start'}`}>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-[10px] font-bold text-muted-foreground">{msg.username}</span>
                   <span className="text-[10px] text-muted-foreground/50">{msg.timestamp}</span>
                 </div>
-                <div className={`px-3 py-2 rounded-xl text-sm max-w-[80%] ${msg.username === me?.username ? 'bg-primary text-white rounded-tr-none' : 'bg-input text-foreground rounded-tl-none border border-border'}`}>
-                  {msg.text}
+                <div className="flex items-center gap-2 group">
+                  {msg.username !== me?.username && msgPlayer && (
+                    <button 
+                      onClick={() => handleOpenReport(msgPlayer.userId, msg.username, msg.text)}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-red-400 transition-opacity" 
+                      title="Mesajı Şikayet Et"
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                    </button>
+                  )}
+                  <div className={`px-3 py-2 rounded-xl text-sm max-w-[80%] ${msg.username === me?.username ? 'bg-primary text-white rounded-tr-none' : 'bg-input text-foreground rounded-tl-none border border-border'}`}>
+                    {msg.text}
+                  </div>
                 </div>
               </div>
-            ))}
+            )})}
             <div ref={chatEndRef} />
           </div>
           <form onSubmit={handleSendMessage} className="p-4 bg-input border-t border-border flex gap-2">
@@ -678,6 +725,52 @@ export default function RoomPage() {
               <div className="flex gap-3 pt-4 border-t border-border mt-6">
                 <button type="button" onClick={() => setIsSettingsOpen(false)} className="flex-1 h-12 rounded-xl bg-input font-bold hover:bg-card transition-all">İptal</button>
                 <button type="submit" className="flex-1 h-12 rounded-xl bg-primary text-white font-bold hover:opacity-90 transition-all">Kaydet</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Report Modal */}
+      {isReportModalOpen && reportTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-card border border-border rounded-3xl w-full max-w-md shadow-2xl overflow-hidden scale-in duration-300">
+            <div className="p-6 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-red-500" />
+                <h3 className="text-xl font-bold">Kullanıcıyı Şikayet Et</h3>
+              </div>
+              <button onClick={() => setIsReportModalOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
+            </div>
+            <form onSubmit={submitReport} className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Şikayet Edilen</label>
+                <div className="w-full h-10 bg-input/50 border border-border rounded-xl px-4 text-sm font-bold text-foreground flex items-center">
+                  {reportTarget.username}
+                </div>
+              </div>
+              {reportTarget.message && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Şikayet Edilen Mesaj</label>
+                  <div className="w-full bg-input/50 border border-border rounded-xl p-3 text-sm text-foreground italic break-words">
+                    &quot;{reportTarget.message}&quot;
+                  </div>
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Sebep</label>
+                <textarea 
+                  value={reportReason} 
+                  onChange={e => setReportReason(e.target.value)}
+                  placeholder="Lütfen şikayet sebebini açıklayın..."
+                  className="w-full h-24 bg-input border border-border rounded-xl p-4 text-sm font-bold text-foreground outline-none focus:border-red-500/50 transition-colors resize-none"
+                  required
+                />
+              </div>
+              
+              <div className="flex gap-3 pt-4 border-t border-border mt-6">
+                <button type="button" onClick={() => setIsReportModalOpen(false)} className="flex-1 h-12 rounded-xl bg-input font-bold hover:bg-card transition-all">İptal</button>
+                <button type="submit" className="flex-1 h-12 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 transition-all">Şikayet Et</button>
               </div>
             </form>
           </div>

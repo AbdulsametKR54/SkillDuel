@@ -18,4 +18,5 @@ public class User
     public string? RefreshToken { get; set; }
     public DateTime? RefreshTokenExpiryTime { get; set; }
     public bool IsBanned { get; set; } = false;
+    public DateTime? BanExpiresAt { get; set; }
 }

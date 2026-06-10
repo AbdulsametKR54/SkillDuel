@@ -39,9 +39,9 @@ public interface IUserCategoryStatRepository : IGenericRepository<UserCategorySt
 public interface IFriendshipRepository : IGenericRepository<Friendship>
 {
     Task<List<Friendship>> GetFriendsByUserIdAsync(Guid userId);
-    Task<Friendship?> GetFriendshipAsync(Guid userId, Guid friendId);
+    Task<Friendship?> GetFriendshipAsync(Guid userId1, Guid userId2);
     Task<List<Friendship>> GetPendingRequestsAsync(Guid userId);
 }
-
-
-
+public interface IReportRepository : IGenericRepository<Report>
+{
+}

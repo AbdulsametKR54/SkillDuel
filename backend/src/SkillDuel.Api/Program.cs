@@ -77,6 +77,7 @@ builder.Services.AddScoped<IPlayerAnswerRepository, PlayerAnswerRepository>();
 builder.Services.AddScoped<IRoomRepository, RoomRepository>();
 builder.Services.AddScoped<IUserCategoryStatRepository, UserCategoryStatRepository>();
 builder.Services.AddScoped<IFriendshipRepository, FriendshipRepository>();
+builder.Services.AddScoped<IReportRepository, ReportRepository>();
 
 // Services
 builder.Services.AddScoped<IAuthService, AuthService>();

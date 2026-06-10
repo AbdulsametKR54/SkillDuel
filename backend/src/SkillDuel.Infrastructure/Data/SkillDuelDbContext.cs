@@ -20,6 +20,7 @@ public class SkillDuelDbContext : DbContext
     public DbSet<RoomPlayer> RoomPlayers { get; set; } = null!;
     public DbSet<UserCategoryStat> UserCategoryStats { get; set; } = null!;
     public DbSet<Friendship> Friendships { get; set; } = null!;
+    public DbSet<Report> Reports { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,5 +43,17 @@ public class SkillDuelDbContext : DbContext
 
         modelBuilder.Entity<Friendship>().HasIndex(f => f.UserId);
         modelBuilder.Entity<Friendship>().HasIndex(f => f.FriendId);
+
+        modelBuilder.Entity<Report>()
+            .HasOne(r => r.Reporter)
+            .WithMany()
+            .HasForeignKey(r => r.ReporterId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Report>()
+            .HasOne(r => r.ReportedUser)
+            .WithMany()
+            .HasForeignKey(r => r.ReportedUserId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

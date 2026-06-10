@@ -45,4 +45,9 @@ public class GenericRepository<T> : IGenericRepository<T> where T : class
         _dbSet.Remove(entity);
         return Task.CompletedTask;
     }
+
+    public virtual System.Linq.IQueryable<T> Query()
+    {
+        return _dbSet.AsQueryable();
+    }
 }

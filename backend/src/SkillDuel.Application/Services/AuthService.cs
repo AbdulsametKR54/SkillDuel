@@ -65,7 +65,20 @@ public class AuthService : IAuthService
 
         if (user.IsBanned)
         {
-            return ApiResponse<AuthResponse>.FailureResult("Your account has been banned");
+            if (user.BanExpiresAt.HasValue && user.BanExpiresAt.Value <= System.DateTime.UtcNow)
+            {
+                user.IsBanned = false;
+                user.BanExpiresAt = null;
+                await _userRepository.UpdateAsync(user);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+            else
+            {
+                var banMessage = user.BanExpiresAt.HasValue 
+                    ? $"Hesabınız {user.BanExpiresAt.Value:dd.MM.yyyy HH:mm} tarihine kadar yasaklandı."
+                    : "Hesabınız kalıcı olarak yasaklandı.";
+                return ApiResponse<AuthResponse>.FailureResult(banMessage);
+            }
         }
 
         var token = _jwtProvider.Generate(user);

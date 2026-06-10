@@ -270,4 +270,7 @@ public class FriendshipRepository : GenericRepository<Friendship>, IFriendshipRe
     }
 }
 
-
+public class ReportRepository : GenericRepository<Report>, IReportRepository
+{
+    public ReportRepository(SkillDuelDbContext context) : base(context) { }
+}
