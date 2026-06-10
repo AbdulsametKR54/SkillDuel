@@ -6,7 +6,7 @@ import { roomsApi, usersApi, friendsApi, categoriesApi } from '@/lib/api';
 import signalRService from '@/lib/signalr';
 import { useGameStore } from '@/lib/store';
 import { useCallback } from 'react';
-import { Loader2, Send, User as UserIcon, Shield, Copy, Share2, LogOut, Swords, MessageSquare, Users, MailCheck } from 'lucide-react';
+import { Loader2, Send, User as UserIcon, Shield, Copy, Share2, LogOut, Swords, MessageSquare, Users, MailCheck, Flag } from 'lucide-react';
 import { toast } from 'sonner';
 import { reportsApi } from '@/lib/api';
 import { AlertTriangle } from 'lucide-react';
@@ -46,7 +46,7 @@ export default function RoomPage() {
   const [loading, setLoading] = useState(true);
   const [startingGame, setStartingGame] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsForm, setSettingsForm] = useState({ categoryId: '', difficulty: '', questionType: '', roundCount: 5 });
+  const [settingsForm, setSettingsForm] = useState({ categoryId: '', difficulty: '', questionType: '', roundCount: 5, maxPlayers: 2 });
   const [categories, setCategories] = useState<any[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -347,11 +347,16 @@ export default function RoomPage() {
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await roomsApi.updateSettings(code, settingsForm);
+      const payload = {
+        ...settingsForm,
+        categoryId: settingsForm.categoryId === '' ? undefined : settingsForm.categoryId
+      };
+      await roomsApi.updateSettings(code, payload);
       toast.success("Ayarlar kaydedildi");
       setIsSettingsOpen(false);
     } catch (e: any) {
-      toast.error("Ayarlar güncellenemedi");
+      const msg = e.response?.data?.message || e.response?.data?.error || "Ayarlar güncellenemedi";
+      toast.error(msg);
     }
   };
 
@@ -433,7 +438,7 @@ export default function RoomPage() {
               const isSlotAdmin = player?.userId === currentAdminId;
 
               return (
-                <div key={idx} className={`bg-card border-2 ${isSlotAdmin ? 'border-primary/20' : player ? 'border-primary/20' : 'border-dashed border-border'} rounded-2xl p-6 flex flex-col items-center justify-center space-y-2 transition-all`}>
+                <div key={idx} className={`relative group bg-card border-2 ${isSlotAdmin ? 'border-primary/20' : player ? 'border-primary/20' : 'border-dashed border-border'} rounded-2xl p-6 flex flex-col items-center justify-center space-y-2 transition-all`}>
                   {player ? (
                     <>
                       <div className="relative">
@@ -443,7 +448,14 @@ export default function RoomPage() {
                         {isSlotAdmin && <div className="absolute -top-1 -right-1 bg-primary text-white p-1 rounded-full"><Shield className="h-3 w-3" /></div>}
                       </div>
                       <div className="text-center mt-3">
-                        <p className="font-black text-lg truncate w-full px-2">{player.username}</p>
+                        <div className="flex items-center justify-center gap-1 w-full px-2">
+                          <p className="font-black text-lg truncate">{player.username}</p>
+                          {player.userId !== me?.id && (
+                            <button onClick={(e) => { e.stopPropagation(); handleOpenReport(player.userId, player.username); }} className="p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded transition-all" title="Kullanıcıyı Şikayet Et">
+                              <Flag className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest">{isSlotAdmin ? 'ADMIN' : (isSlotHost ? 'HOST' : `GUEST ${slotNumber - 1}`)}</p>
                       </div>
                       {isAdmin && player.userId !== me?.id && (
@@ -455,11 +467,6 @@ export default function RoomPage() {
                             At
                           </button>
                         </div>
-                      )}
-                      {player.userId !== me?.id && (
-                        <button onClick={() => handleOpenReport(player.userId, player.username)} className="absolute top-2 right-2 p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors" title="Kullanıcıyı Şikayet Et">
-                          <AlertTriangle className="h-4 w-4" />
-                        </button>
                       )}
                     </>
                   ) : (
@@ -491,7 +498,8 @@ export default function RoomPage() {
                           categoryId: room.categoryId || '',
                           difficulty: room.difficulty || '',
                           questionType: room.questionType || '',
-                          roundCount: room.roundCount || 5
+                          roundCount: room.roundCount || 5,
+                          maxPlayers: room.maxPlayers || 2
                         });
                         setIsSettingsOpen(true);
                       }}
@@ -691,9 +699,9 @@ export default function RoomPage() {
                   className="w-full h-12 bg-input border border-border rounded-xl px-4 text-sm font-bold text-foreground outline-none focus:border-primary/50 transition-colors"
                 >
                   <option value="">Fark Etmez</option>
-                  <option value="easy">Kolay</option>
-                  <option value="medium">Orta</option>
-                  <option value="hard">Zor</option>
+                  <option value="Easy">Kolay</option>
+                  <option value="Medium">Orta</option>
+                  <option value="Hard">Zor</option>
                 </select>
               </div>
               <div className="space-y-2">
@@ -704,8 +712,8 @@ export default function RoomPage() {
                   className="w-full h-12 bg-input border border-border rounded-xl px-4 text-sm font-bold text-foreground outline-none focus:border-primary/50 transition-colors"
                 >
                   <option value="">Fark Etmez</option>
-                  <option value="multiple_choice">Çoktan Seçmeli</option>
-                  <option value="true_false">Doğru / Yanlış</option>
+                  <option value="Multiple">Çoktan Seçmeli</option>
+                  <option value="TrueFalse">Doğru / Yanlış</option>
                 </select>
               </div>
               <div className="space-y-2">
@@ -715,10 +723,20 @@ export default function RoomPage() {
                   onChange={e => setSettingsForm({ ...settingsForm, roundCount: parseInt(e.target.value) })}
                   className="w-full h-12 bg-input border border-border rounded-xl px-4 text-sm font-bold text-foreground outline-none focus:border-primary/50 transition-colors"
                 >
-                  <option value={3}>3 Tur</option>
                   <option value={5}>5 Tur</option>
-                  <option value={7}>7 Tur</option>
                   <option value={10}>10 Tur</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Oyuncu Sayısı</label>
+                <select 
+                  value={settingsForm.maxPlayers} 
+                  onChange={e => setSettingsForm({ ...settingsForm, maxPlayers: parseInt(e.target.value) })}
+                  className="w-full h-12 bg-input border border-border rounded-xl px-4 text-sm font-bold text-foreground outline-none focus:border-primary/50 transition-colors"
+                >
+                  <option value={2}>2 Oyuncu</option>
+                  <option value={3}>3 Oyuncu</option>
+                  <option value={4}>4 Oyuncu</option>
                 </select>
               </div>
               

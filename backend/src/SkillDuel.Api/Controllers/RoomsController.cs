@@ -128,6 +128,20 @@ public class RoomsController : ControllerBase
         var room = await _roomRepository.GetByCodeAsync(code.ToUpper());
         if (room == null) return NotFound(ApiResponse<RoomResponse>.FailureResult("Room not found."));
         
+        try {
+            var userId = GetUserId();
+            var db = _redis.GetDatabase();
+            if (await db.KeyExistsAsync($"skillduel:room:{room.Code.ToUpper()}:needs_admin"))
+            {
+                if (room.Players.Any(p => p.UserId == userId))
+                {
+                    await db.KeyDeleteAsync($"skillduel:room:{room.Code.ToUpper()}:needs_admin");
+                    await db.StringSetAsync($"skillduel:room:{room.Code.ToUpper()}:admin", userId.ToString(), TimeSpan.FromHours(1));
+                    await _hubContext.Clients.Group(room.Code.ToUpper()).HostChanged(userId);
+                }
+            }
+        } catch { } // Ignore if not authenticated or outside scope
+
         return Ok(ApiResponse<RoomResponse>.SuccessResult(MapToResponse(room)));
     }
 
@@ -217,7 +231,15 @@ public class RoomsController : ControllerBase
         {
             room.Status = RoomStatus.Ready;
         }
-        await _unitOfWork.SaveChangesAsync();
+        try
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
+        {
+            Console.WriteLine($"[JoinRoom] Concurrency error: {ex.Message}");
+            return BadRequest(ApiResponse<RoomResponse>.FailureResult("Odaya aynı anda başka biri katıldı veya bir hata oluştu. Lütfen tekrar deneyin."));
+        }
 
         // Notify host via SignalR
         var guest = await _userRepository.GetByIdAsync(userId);
@@ -334,10 +356,26 @@ public class RoomsController : ControllerBase
 
         if (currentAdminId != userId) return Forbid();
 
+        if (request.RoundCount != 5 && request.RoundCount != 10)
+        {
+            return BadRequest(ApiResponse.FailureResult("Soru sayısı sadece 5 veya 10 olabilir."));
+        }
+
+        if (request.MaxPlayers < 2 || request.MaxPlayers > 4)
+        {
+            return BadRequest(ApiResponse.FailureResult("Oyuncu sayısı 2 ile 4 arasında olmalıdır."));
+        }
+
+        if (room.Players.Count > request.MaxPlayers)
+        {
+            return BadRequest(ApiResponse.FailureResult($"Odada şu an {room.Players.Count} kişi var. Önce oyuncuları atmalısınız."));
+        }
+
         room.CategoryId = request.CategoryId;
         room.Difficulty = request.Difficulty;
         room.QuestionType = request.QuestionType;
         room.RoundCount = request.RoundCount;
+        room.MaxPlayers = request.MaxPlayers;
 
         await _unitOfWork.SaveChangesAsync();
 
@@ -346,7 +384,8 @@ public class RoomsController : ControllerBase
             categoryId = room.CategoryId,
             difficulty = room.Difficulty,
             questionType = room.QuestionType,
-            roundCount = room.RoundCount
+            roundCount = room.RoundCount,
+            maxPlayers = room.MaxPlayers
         };
 
         await _hubContext.Clients.Group(room.Code.ToUpper()).RoomSettingsUpdated(settings);

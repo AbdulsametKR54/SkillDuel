@@ -38,5 +38,6 @@ public record PlayerGameResult(
 public record GameOverDto(
     Guid? WinnerId,
     string? WinnerUsername,
-    List<PlayerGameResult> Players
+    List<PlayerGameResult> Players,
+    string? RoomCode = null
 );

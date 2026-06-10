@@ -60,6 +60,22 @@ public class UsersController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("search")]
+    public async Task<IActionResult> SearchUsers([FromQuery] string q, [FromServices] IUserRepository userRepository)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Length < 3) return Ok(new { Items = new List<object>() });
+        var (items, _) = await userRepository.GetPagedUsersAsync(q, 1, 10);
+        return Ok(new
+        {
+            Items = items.Select(u => new
+            {
+                u.Id,
+                u.Username,
+                u.EloRating
+            })
+        });
+    }
+
     private Guid GetUserId()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);

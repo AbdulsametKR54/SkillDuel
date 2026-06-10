@@ -43,7 +43,8 @@ public class UserService : IUserService
             TotalWins = user.TotalWins,
             TotalLosses = user.TotalLosses,
             TotalGames = user.TotalGames,
-            CreatedAt = user.CreatedAt
+            CreatedAt = user.CreatedAt,
+            Role = user.Role
         };
 
         return ApiResponse<UserResponse>.SuccessResult(response);
@@ -88,7 +89,8 @@ public class UserService : IUserService
             TotalWins = user.TotalWins,
             TotalLosses = user.TotalLosses,
             TotalGames = user.TotalGames,
-            CreatedAt = user.CreatedAt
+            CreatedAt = user.CreatedAt,
+            Role = user.Role
         };
 
         return ApiResponse<UserResponse>.SuccessResult(response);

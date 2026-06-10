@@ -9,6 +9,7 @@ import signalRService from '@/lib/signalr';
 import Link from 'next/link';
 import { LogOut, Trophy, Swords, User as UserIcon, BarChart3, Loader2, Clock, Target, History, Plus, Search, Lock, Users, ChevronRight, UserPlus, UserCheck, UserX, UserMinus, Mail } from 'lucide-react';
 import { SuggestQuestionModal } from '@/components/SuggestQuestionModal';
+import { Navbar } from '@/components/Navbar';
 import { toast } from 'sonner';
 
 interface UserProfile { id: string; username: string; email: string; eloRating: number; totalWins: number; totalLosses: number; totalGames: number; role?: string; }
@@ -132,12 +133,14 @@ export default function LobbyPage() {
     }
   };
 
+  const [friendToRemove, setFriendToRemove] = useState<any>(null);
+
   const handleRemoveFriend = async (id: string) => {
-    if (!confirm("Bu arkadaşı silmek istediğinize emin misiniz?")) return;
     try {
       const res = await friendsApi.removeFriend(id);
       toast.success(res.data?.message || "Arkadaş silindi");
       fetchFriends();
+      setFriendToRemove(null);
     } catch (err: any) {
       toast.error("Arkadaş silinemedi");
     }
@@ -373,31 +376,7 @@ export default function LobbyPage() {
           </div>
         </div>
       )}
-      {/* Top Bar */}
-      <header className="sticky top-0 z-10 bg-background border-b border-border px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="bg-gradient-accent p-1.5 rounded-lg"><Swords className="h-5 w-5 text-white" /></div>
-          <span className="text-xl font-black tracking-tighter text-gradient-accent">SKILLDUEL</span>
-        </div>
-        <nav className="hidden lg:flex items-center gap-1 bg-card p-1 rounded-xl border border-border">
-          <Link href="/leaderboard"><button className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold text-muted-foreground hover:bg-input hover:text-foreground transition-all"><Trophy className="h-4 w-4 text-primary" />Leaderboard</button></Link>
-          <Link href="/history"><button className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold text-muted-foreground hover:bg-input hover:text-foreground transition-all"><History className="h-4 w-4 text-primary" />My History</button></Link>
-        </nav>
-        <div className="flex items-center gap-4">
-          {user?.role === 'Admin' && (
-            <Link href="/admin/questions">
-              <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all">
-                Admin Panel
-              </button>
-            </Link>
-          )}
-          <Link href="/profile" className="hidden md:flex flex-col items-end group cursor-pointer">
-            <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{user?.username}</span>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground bg-card border border-border px-2 py-0.5 rounded-full"><Trophy className="h-3 w-3 text-primary" /><span>{user?.eloRating} Elo</span></div>
-          </Link>
-          <button onClick={handleLogout} title="Logout" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-card border border-transparent hover:border-border transition-all"><LogOut className="h-5 w-5" /></button>
-        </div>
-      </header>
+      <Navbar />
 
       {/* Main */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-6 md:p-12">
@@ -734,22 +713,7 @@ export default function LobbyPage() {
               </div>
               
               <div className="bg-card border border-border rounded-2xl shadow-lg p-6 space-y-6">
-                {/* Arkadaş Ekleme Formu */}
-                <form onSubmit={handleSendFriendRequest} className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Arkadaş Ekle</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={friendUsername}
-                      onChange={e => setFriendUsername(e.target.value)}
-                      placeholder="Kullanıcı adı girin..."
-                      className="w-full h-10 px-3 rounded-xl bg-input border border-border text-foreground text-sm outline-none transition-all focus:border-primary"
-                    />
-                    <button type="submit" className="px-4 h-10 bg-primary hover:opacity-90 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1 min-w-[70px]">
-                      <UserPlus className="h-4 w-4" /> Ekle
-                    </button>
-                  </div>
-                </form>
+
 
                 {/* Gelen İstekler */}
                 {friendRequests.length > 0 && (
@@ -824,7 +788,7 @@ export default function LobbyPage() {
                             </div>
                           </div>
                           <button
-                            onClick={() => handleRemoveFriend(f.friendId)}
+                            onClick={() => setFriendToRemove(f)}
                             className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
                             title="Arkadaşı Sil"
                           >
@@ -840,6 +804,22 @@ export default function LobbyPage() {
           </div>
         </div>
       </main>
+
+      {/* Remove Friend Modal */}
+      {friendToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-card border border-border rounded-3xl w-full max-w-md shadow-2xl overflow-hidden scale-in duration-300 p-6">
+            <h3 className="text-xl font-black mb-2 text-destructive">Arkadaşı Sil</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              <strong className="text-foreground">{friendToRemove.friendUsername}</strong> adlı kullanıcıyı arkadaş listenizden silmek istediğinize emin misiniz?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setFriendToRemove(null)} className="flex-1 py-3 rounded-xl bg-input font-bold hover:bg-input/80 transition-all">İptal</button>
+              <button onClick={() => handleRemoveFriend(friendToRemove.friendId)} className="flex-1 py-3 rounded-xl bg-destructive text-white font-bold hover:opacity-90 transition-all">Evet, Sil</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Join Password Modal */}
       {joiningRoom && (

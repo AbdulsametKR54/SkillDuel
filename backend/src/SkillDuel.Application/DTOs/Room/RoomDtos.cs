@@ -54,6 +54,7 @@ public class UpdateRoomSettingsRequest
     public string? Difficulty { get; set; }
     public string? QuestionType { get; set; }
     public int RoundCount { get; set; }
+    public int MaxPlayers { get; set; }
 }
 
 public class RoomSearchRequest

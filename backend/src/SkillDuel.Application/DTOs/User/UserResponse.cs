@@ -12,4 +12,5 @@ public class UserResponse
     public int TotalLosses { get; set; }
     public int TotalGames { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string Role { get; set; } = string.Empty;
 }

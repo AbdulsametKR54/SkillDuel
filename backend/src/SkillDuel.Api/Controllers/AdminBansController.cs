@@ -28,7 +28,6 @@ public class AdminBansController : ControllerBase
         var reports = await _reportRepository.Query()
             .Include(r => r.Reporter)
             .Include(r => r.ReportedUser)
-            .Where(r => !r.IsResolved)
             .OrderByDescending(r => r.CreatedAt)
             .Select(r => new
             {
@@ -39,7 +38,8 @@ public class AdminBansController : ControllerBase
                 ReportedUsername = r.ReportedUser.Username,
                 r.Reason,
                 r.ChatMessage,
-                r.CreatedAt
+                r.CreatedAt,
+                r.IsResolved
             })
             .ToListAsync();
 
@@ -98,6 +98,28 @@ public class AdminBansController : ControllerBase
 
         report.IsResolved = true;
         await _reportRepository.UpdateAsync(report);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Ok(ApiResponse<bool>.SuccessResult(true));
+    }
+
+    [HttpPost("reports/{id}/undo")]
+    public async Task<ActionResult<ApiResponse<bool>>> UndoReport(Guid id)
+    {
+        var report = await _reportRepository.GetByIdAsync(id);
+        if (report == null) return NotFound(ApiResponse<bool>.FailureResult("Rapor bulunamadı."));
+
+        report.IsResolved = false;
+        await _reportRepository.UpdateAsync(report);
+
+        var user = await _userRepository.GetByIdAsync(report.ReportedUserId);
+        if (user != null)
+        {
+            user.IsBanned = false;
+            user.BanExpiresAt = null;
+            await _userRepository.UpdateAsync(user);
+        }
+
         await _unitOfWork.SaveChangesAsync();
 
         return Ok(ApiResponse<bool>.SuccessResult(true));

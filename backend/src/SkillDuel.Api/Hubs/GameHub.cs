@@ -118,7 +118,8 @@ public class GameHub : Hub<IGameHub>
             Player2Id = p2!.UserId,
             Player3Id = p3?.UserId,
             Player4Id = p4?.UserId,
-            Status = GameStatus.Active
+            Status = GameStatus.Active,
+            RoomCode = room.Code.ToUpper()
         };
 
         await _gameSessionRepository.AddAsync(session);

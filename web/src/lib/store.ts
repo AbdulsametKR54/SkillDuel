@@ -36,6 +36,7 @@ interface GameState {
   endResult: {
     winnerId?: string;
     winnerUsername?: string;
+    roomCode?: string;
   } | null;
   opponentDisconnected: boolean;
   

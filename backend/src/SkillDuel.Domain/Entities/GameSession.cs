@@ -12,6 +12,7 @@ public class GameSession
     public Guid? Player4Id { get; set; }
     public GameStatus Status { get; set; } = GameStatus.Waiting;
     public Guid? WinnerId { get; set; }
+    public string? RoomCode { get; set; } // Eklenen alan
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;
     public DateTime? EndedAt { get; set; }
 

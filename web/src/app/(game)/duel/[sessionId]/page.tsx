@@ -201,9 +201,24 @@ export default function DuelPage() {
             })}
           </div>
 
-          <button onClick={handleBackToLobby} className="w-full h-16 text-xl font-bold rounded-2xl bg-gradient-accent text-white shadow-lg hover:opacity-90 active:scale-[0.98] transition-all">
-            BACK TO LOBBY
-          </button>
+          <div className="flex flex-col sm:flex-row gap-4 w-full">
+            <button onClick={handleBackToLobby} className="flex-1 h-14 md:h-16 text-lg md:text-xl font-bold rounded-2xl bg-input text-foreground border border-border shadow-lg hover:bg-input/80 active:scale-[0.98] transition-all">
+              LOBİYE DÖN
+            </button>
+            {endResult?.roomCode && (
+              <button 
+                onClick={() => { resetGame(); router.push(`/room/${endResult.roomCode}`); }} 
+                className="flex-1 h-14 md:h-16 text-lg md:text-xl font-bold rounded-2xl bg-gradient-accent text-white shadow-lg hover:opacity-90 active:scale-[0.98] transition-all"
+              >
+                ODAYA DÖN
+              </button>
+            )}
+            {!endResult?.roomCode && (
+              <button onClick={handleBackToLobby} className="flex-1 h-14 md:h-16 text-lg md:text-xl font-bold rounded-2xl bg-gradient-accent text-white shadow-lg hover:opacity-90 active:scale-[0.98] transition-all">
+                DEVAM ET
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );

@@ -82,6 +82,12 @@ export default function AdminQuestionsPage() {
   const [userSearch, setUserSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
+  // Modal State
+  const [modalState, setModalState] = useState<{
+    type: 'rejectQuestion' | 'deleteQuestion' | 'makeAdmin' | 'removeAdmin',
+    id: string
+  } | null>(null);
+
   // Load Categories on mount
   useEffect(() => {
     categoriesApi.list().then(res => setCategories(res.data || [])).catch(console.error);
@@ -178,8 +184,6 @@ export default function AdminQuestionsPage() {
   };
 
   const handleReject = async (id: string) => {
-    if (!confirm('Bu soruyu reddetmek istediğinizden emin misiniz?')) return;
-    
     // Optimistic Update
     const questionToReject = pendingQuestions.find(q => q.id === id);
     setPendingQuestions(prev => prev.filter(q => q.id !== id));
@@ -197,8 +201,6 @@ export default function AdminQuestionsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Bu soruyu kalıcı olarak silmek istediğinizden emin misiniz?')) return;
-    
     // Optimistic Update
     const oldQuestions = [...allQuestions];
     setAllQuestions(prev => prev.filter(q => q.id !== id));
@@ -244,8 +246,6 @@ export default function AdminQuestionsPage() {
   };
 
   const handleMakeAdmin = async (id: string) => {
-    if (!confirm('Bu kullanıcıyı Admin yapmak istediğinize emin misiniz?')) return;
-    
     // Optimistic Update
     setUsers(prev => prev.map(u => u.id === id ? { ...u, role: 'Admin' } : u));
     toast.success('Kullanıcı rolü Admin olarak güncellendi.');
@@ -261,8 +261,6 @@ export default function AdminQuestionsPage() {
   };
 
   const handleRemoveAdmin = async (id: string) => {
-    if (!confirm('Bu kullanıcının yetkisini normal kullanıcıya (\'User\') düşürmek istediğinizden emin misiniz?')) return;
-    
     // Optimistic Update
     setUsers(prev => prev.map(u => u.id === id ? { ...u, role: 'User' } : u));
     toast.success('Kullanıcı yetkisi normal kullanıcı (User) olarak güncellendi.');
@@ -407,7 +405,7 @@ export default function AdminQuestionsPage() {
                             <CheckCircle className="w-4 h-4" /> Onayla
                           </button>
                           <button 
-                            onClick={() => handleReject(q.id)}
+                            onClick={() => setModalState({ type: 'rejectQuestion', id: q.id })}
                             className="flex items-center justify-center gap-1.5 px-4 h-10 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive font-black text-xs uppercase tracking-wider hover:bg-destructive hover:text-white active:scale-95 transition-all"
                             title="Reddet"
                           >
@@ -578,7 +576,7 @@ export default function AdminQuestionsPage() {
                             <td className="p-4 text-xs font-bold text-muted-foreground">@{createdBy}</td>
                             <td className="p-4 text-right">
                               <button 
-                                onClick={() => handleDelete(q.id)} 
+                                onClick={() => setModalState({ type: 'deleteQuestion', id: q.id })} 
                                 className="p-2 bg-input rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/15 border border-transparent hover:border-destructive/30 transition-all active:scale-90"
                                 title="Soruyu Sil"
                               >
@@ -732,14 +730,14 @@ export default function AdminQuestionsPage() {
                                 {/* Make Admin / Remove Admin Button */}
                                 {isAdmin ? (
                                   <button
-                                    onClick={() => handleRemoveAdmin(u.id)}
+                                    onClick={() => setModalState({ type: 'removeAdmin', id: u.id })}
                                     className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive hover:text-white border border-destructive/20 text-destructive text-[10px] font-black uppercase tracking-wider rounded-xl transition-all active:scale-95"
                                   >
                                     Adminliği Kaldır
                                   </button>
                                 ) : (
                                   <button
-                                    onClick={() => handleMakeAdmin(u.id)}
+                                    onClick={() => setModalState({ type: 'makeAdmin', id: u.id })}
                                     className="px-3 py-1.5 bg-primary/10 hover:bg-primary hover:text-black border border-primary/20 text-primary text-[10px] font-black uppercase tracking-wider rounded-xl transition-all active:scale-95"
                                   >
                                     Admin Yap
@@ -783,6 +781,65 @@ export default function AdminQuestionsPage() {
           </div>
         )}
       </main>
+
+      {/* Action Modals */}
+      {modalState && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border shadow-2xl rounded-2xl p-6 w-full max-w-md animate-in zoom-in-95 duration-200">
+            {modalState.type === 'rejectQuestion' && (
+              <>
+                <h3 className="text-xl font-black mb-2 text-destructive">Soruyu Reddet</h3>
+                <p className="text-sm text-muted-foreground mb-6">
+                  Bu soruyu reddetmek istediğinizden emin misiniz? Reddedilen sorular havuza eklenmez.
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setModalState(null)} className="flex-1 py-3 rounded-xl bg-input font-bold hover:bg-input/80 transition-all">İptal</button>
+                  <button onClick={() => { handleReject(modalState.id); setModalState(null); }} className="flex-1 py-3 rounded-xl bg-destructive text-white font-bold hover:opacity-90 transition-all">Evet, Reddet</button>
+                </div>
+              </>
+            )}
+
+            {modalState.type === 'deleteQuestion' && (
+              <>
+                <h3 className="text-xl font-black mb-2 text-destructive">Soruyu Sil</h3>
+                <p className="text-sm text-muted-foreground mb-6">
+                  Bu soruyu kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setModalState(null)} className="flex-1 py-3 rounded-xl bg-input font-bold hover:bg-input/80 transition-all">İptal</button>
+                  <button onClick={() => { handleDelete(modalState.id); setModalState(null); }} className="flex-1 py-3 rounded-xl bg-destructive text-white font-bold hover:opacity-90 transition-all">Soruyu Sil</button>
+                </div>
+              </>
+            )}
+
+            {modalState.type === 'makeAdmin' && (
+              <>
+                <h3 className="text-xl font-black mb-2 text-primary">Admin Yetkisi Ver</h3>
+                <p className="text-sm text-muted-foreground mb-6">
+                  Bu kullanıcıyı Admin yapmak istediğinize emin misiniz? Bu yetki, sistemdeki kritik işlemlere erişim sağlar.
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setModalState(null)} className="flex-1 py-3 rounded-xl bg-input font-bold hover:bg-input/80 transition-all">İptal</button>
+                  <button onClick={() => { handleMakeAdmin(modalState.id); setModalState(null); }} className="flex-1 py-3 rounded-xl bg-primary text-black font-black hover:opacity-90 transition-all">Admin Yap</button>
+                </div>
+              </>
+            )}
+
+            {modalState.type === 'removeAdmin' && (
+              <>
+                <h3 className="text-xl font-black mb-2 text-destructive">Admin Yetkisini Al</h3>
+                <p className="text-sm text-muted-foreground mb-6">
+                  Bu kullanıcının yetkisini normal kullanıcıya (User) düşürmek istediğinizden emin misiniz?
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setModalState(null)} className="flex-1 py-3 rounded-xl bg-input font-bold hover:bg-input/80 transition-all">İptal</button>
+                  <button onClick={() => { handleRemoveAdmin(modalState.id); setModalState(null); }} className="flex-1 py-3 rounded-xl bg-destructive text-white font-bold hover:opacity-90 transition-all">Yetkiyi Düşür</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

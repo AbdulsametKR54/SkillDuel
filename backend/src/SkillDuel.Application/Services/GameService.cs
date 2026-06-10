@@ -23,6 +23,7 @@ public class GameService : IGameService
     private readonly IQuestionRepository _questionRepository;
     private readonly IUserRepository _userRepository;
     private readonly IGameSessionRepository _gameSessionRepository;
+    private readonly IRoomRepository _roomRepository;
     private readonly ICategoryRepository _categoryRepository;
     private readonly IUserCategoryStatRepository _userCategoryStatRepository;
     private readonly IGameNotificationService _notificationService;
@@ -36,6 +37,7 @@ public class GameService : IGameService
         IQuestionRepository questionRepository,
         IUserRepository userRepository,
         IGameSessionRepository gameSessionRepository,
+        IRoomRepository roomRepository,
         ICategoryRepository categoryRepository,
         IUserCategoryStatRepository userCategoryStatRepository,
         IGameNotificationService notificationService,
@@ -48,6 +50,7 @@ public class GameService : IGameService
         _questionRepository = questionRepository;
         _userRepository = userRepository;
         _gameSessionRepository = gameSessionRepository;
+        _roomRepository = roomRepository;
         _categoryRepository = categoryRepository;
         _userCategoryStatRepository = userCategoryStatRepository;
         _notificationService = notificationService;
@@ -749,6 +752,19 @@ public class GameService : IGameService
         }
 
         await _gameSessionRepository.UpdateAsync(session);
+
+        if (!string.IsNullOrEmpty(session.RoomCode))
+        {
+            var room = await _roomRepository.GetByCodeAsync(session.RoomCode);
+            if (room != null)
+            {
+                room.Status = RoomStatus.Waiting;
+                // do not clear room.Players
+                await _roomRepository.UpdateAsync(room);
+                await _db.StringSetAsync($"skillduel:room:{room.Code.ToUpper()}:needs_admin", "1", TimeSpan.FromMinutes(10));
+            }
+        }
+
         await _unitOfWork.SaveChangesAsync();
 
         var playerResults = playersData.Select(p => new PlayerGameResult(
@@ -758,7 +774,7 @@ public class GameService : IGameService
         string? winnerName = session.WinnerId.HasValue ? playersData.First(p => p.Id == session.WinnerId.Value).Username : null;
 
         await _notificationService.SendGameEndedAsync(sessionId, new GameOverDto(
-            session.WinnerId, winnerName, playerResults));
+            session.WinnerId, winnerName, playerResults, session.RoomCode));
 
         await _db.KeyDeleteAsync(stateKey);
     }

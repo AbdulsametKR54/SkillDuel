@@ -93,6 +93,7 @@ export const adminApi = {
   getReports: () => api.get('/api/admin/bans/reports').then(r => r.data),
   banUserWithDuration: (data: { userId: string, duration: string }) => api.post('/api/admin/bans/ban', data).then(r => r.data),
   resolveReport: (id: string) => api.post(`/api/admin/bans/reports/${id}/resolve`).then(r => r.data),
+  undoReport: (id: string) => api.post(`/api/admin/bans/reports/${id}/undo`).then(r => r.data),
 };
 
 export const reportsApi = {
@@ -131,6 +132,7 @@ export const usersApi = {
   me: () => api.get('/api/Users/me').then(r => r.data),
   updateMe: (data: { newUsername: string }) => api.put('/api/Users/me', data).then(r => r.data),
   stats: () => api.get('/api/Users/me/stats').then(r => r.data),
+  search: (q: string) => api.get('/api/Users/search', { params: { q } }).then(r => r.data),
 };
 
 export const friendsApi = {
