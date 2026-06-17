@@ -27,7 +27,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
                 "http://localhost:3000",
-                "https://skill-duel-five.vercel.app"
+                "https://skill-duel-plum.vercel.app"
               )
               .AllowAnyHeader()
               .AllowAnyMethod()
