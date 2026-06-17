@@ -163,7 +163,7 @@ export default function BansAdminPage() {
                         {report.chatMessage && (
                           <div className="bg-input/50 p-2 rounded-lg border border-border/50">
                             <span className="text-xs text-muted-foreground mr-2">Mesaj:</span>
-                            <span className="text-sm font-mono text-foreground">"{report.chatMessage}"</span>
+                            <span className="text-sm font-mono text-foreground">&quot;{report.chatMessage}&quot;</span>
                           </div>
                         )}
                       </div>
