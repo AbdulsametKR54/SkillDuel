@@ -58,7 +58,7 @@ public class MatchmakingBackgroundWorker : BackgroundService
                 else
                 {
                     _logger.LogDebug("No trigger, sleeping...");
-                    await Task.Delay(500, stoppingToken);
+                    await Task.Delay(5000, stoppingToken);
                 }
             }
             catch (OperationCanceledException)
