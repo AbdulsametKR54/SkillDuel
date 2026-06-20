@@ -191,8 +191,9 @@ export default function LobbyPage() {
       if (conn) {
         conn.off('PlayerLeft');
         conn.off('RoomClosed');
+        conn.off('FriendInviteReceived');
+        conn.off('FriendRequestReceived');
       }
-      signalRService.removeHandlers();
     };
   }, [activeTab]);
 

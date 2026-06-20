@@ -25,7 +25,7 @@ class SignalRService {
     this.connection = new signalR.HubConnectionBuilder()
       .withUrl(SIGNALR_URL, {
         accessTokenFactory: () => Cookies.get('token') || '',
-        transport: signalR.HttpTransportType.WebSockets,
+        transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.ServerSentEvents | signalR.HttpTransportType.LongPolling,
       })
       .withAutomaticReconnect()
       .configureLogging(signalR.LogLevel.Information)
