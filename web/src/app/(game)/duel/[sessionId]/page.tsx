@@ -97,7 +97,7 @@ export default function DuelPage() {
     await submitAnswer(index, Date.now() - roundStartTime);
   };
 
-  const handleBackToLobby = () => { resetGame(); router.push('/lobby'); };
+  const handleBackToLobby = () => { resetGame(); window.location.href = '/lobby'; };
 
   const totalRounds = question?.totalRounds || 5;
 
@@ -207,7 +207,7 @@ export default function DuelPage() {
             </button>
             {endResult?.roomCode && (
               <button 
-                onClick={() => { resetGame(); router.push(`/room/${endResult.roomCode}`); }} 
+                onClick={() => { resetGame(); window.location.href = `/room/${endResult.roomCode}`; }} 
                 className="flex-1 h-14 md:h-16 text-lg md:text-xl font-bold rounded-2xl bg-gradient-accent text-white shadow-lg hover:opacity-90 active:scale-[0.98] transition-all"
               >
                 ODAYA DÖN

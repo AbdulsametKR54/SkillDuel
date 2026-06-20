@@ -102,7 +102,6 @@ export const useGameStore = create<GameState>((set) => ({
   setEndResult: (result) => set({ endResult: result }),
   setOpponentDisconnected: (disconnected) => set({ opponentDisconnected: disconnected as any }),
   resetGame: () => set({
-    userId: null,
     sessionId: null,
     players: [],
     currentRound: 0,

@@ -689,8 +689,8 @@ public class GameService : IGameService
         {
             var p1 = playersData[0].User;
             var p2 = playersData[1].User;
-            double p1Actual = winner.Id == p1.Id ? 1 : (playersData[0].Score == playersData[1].Score ? 0.5 : 0);
-            double p2Actual = 1 - p1Actual;
+            double p1Actual = playersData[0].Score == playersData[1].Score ? 0.5 : (winner.Id == p1.Id ? 1 : 0);
+            double p2Actual = playersData[0].Score == playersData[1].Score ? 0.5 : (winner.Id == p2.Id ? 1 : 0);
 
             int p1Old = p1.EloRating;
             int p2Old = p2.EloRating;
