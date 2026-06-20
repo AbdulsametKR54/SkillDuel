@@ -54,7 +54,10 @@ export const useMatchmaking = () => {
     });
 
     return () => {
-      signalRService.removeHandlers();
+      const conn = signalRService.getConnection();
+      conn?.off('MatchFound');
+      conn?.off('MatchmakingTimeout');
+      conn?.off('GameError');
     };
   }, [setGameStatus, setSessionId, setPlayers, setUserId, router]);
 
